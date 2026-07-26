@@ -19,12 +19,15 @@
 
 作業を再開したら、上から順に進める。
 
-1. [ ] GPUマシンでこのリポジトリをclone し、[01_SETUP.md](01_SETUP.md) §2〜3 を実行
-2. [ ] [01_SETUP.md](01_SETUP.md) §4 のマシンプロファイル表にGPU機の情報を追記してコミット
-3. [ ] 判明したVRAM量をもとに、[00_PLAN.md](00_PLAN.md) §7 のスコープ表から現実的な目標サイズを確定
-4. [ ] `pyproject.toml` を作成（`uv init` → 依存追加）
-5. [ ] `.env.example` をもとに `.env` を作成し、使用するLLMプロバイダを決定
-6. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2 のフォーマットで応答が返るところまで）
+1. [ ] GPUマシンで pixi を導入し、このリポジトリをclone（[01_SETUP.md](01_SETUP.md) §2）
+2. [ ] `nvidia-smi` の **CUDA Version** を確認し、[01_SETUP.md](01_SETUP.md) §4.3 の表に従って
+       `pixi.toml` のwheel index を確定する（既定は `cu128` / torch 2.11.0）。
+       変更したら `pixi lock` して `pixi.lock` もコミット
+3. [ ] `pixi run -e gpu gpu-check` が通ることを確認
+4. [ ] `pixi run machine-info` の出力を [01_SETUP.md](01_SETUP.md) §6 のマシンプロファイル表に追記
+5. [ ] 判明したVRAM量をもとに、[00_PLAN.md](00_PLAN.md) §7 のスコープ表から現実的な目標サイズを確定
+6. [ ] `.env.example` をもとに `.env` を作成し、使用するLLMプロバイダを決定
+7. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2 のフォーマットで応答が返るところまで）
 
 ---
 
@@ -34,8 +37,10 @@
 
 | 項目 | 選択肢 | 結論 |
 |---|---|---|
+| パッケージ管理 | uv / pixi / conda | **pixi**。B7でC++、A5でNode.jsが要るためPythonだけで完結しない |
 | メインのLLMプロバイダ | Anthropic API / OpenAI互換 / Ollamaローカル | 未定 |
 | GPUマシンのVRAM | — | **未確認** |
+| GPUマシンのCUDAバージョン | cu124 / cu128 / cu130 | **未確認**（暫定 `cu128`） |
 | ベクトルDB | 自前numpy → chromadb / faiss / Qdrant | 自前から始める（学習目的） |
 | B6のベースモデル | Qwen3-0.6B / 1.7B / Llama 3.2 3B / Gemma 3 | VRAM確定後に決定 |
 | 実験管理 | TensorBoard / wandb | 未定 |
@@ -91,6 +96,17 @@
 - 学んだこと / 詰まったこと
 - 次にやること
 ```
+
+### 2026-07-27 (laptop-i5)
+- パッケージ管理を **uv から pixi に変更**。理由: B7（llama.cppのビルド）でC++とcmake、
+  A5（常駐オーバーレイ）でNode.jsが要るため、Pythonだけでは完結しないと判断した
+- `pixi.toml` を作成。環境を `default` / `laptop`（CPU+Node）/ `gpu`（CUDA+学習+ビルド）に分割。
+  同一manifestでマシンごとに切り替える運用にした
+- 3環境すべて `pixi lock` で解決を確認済み。CPU側 torch 2.13.0、GPU側 torch 2.11.0+cu128
+- CUDA index を実測: `cu124`→torch 2.6.0 / `cu128`→2.11.0 / `cu130`→2.13.0。
+  ドライバ互換を優先して既定は `cu128`。GPU機の `nvidia-smi` を見て上げる（01_SETUP.md §4.3）
+- `[feature.gpu.system-requirements]` は pixi 0.72 で非推奨警告が出るが、
+  代替の `platforms = [{...}]` 記法は workspace 直下限定でfeature単位に書けないため据え置き
 
 ### 2026-07-27 (laptop-i5)
 - A5で使う解析フィールドの視覚仕様を [05_FIELD_VISUAL.md](05_FIELD_VISUAL.md) に策定。

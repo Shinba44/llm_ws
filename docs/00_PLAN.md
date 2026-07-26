@@ -39,7 +39,7 @@
 
 | ID | 内容 | 完了条件 | 目安 |
 |---|---|---|---|
-| **M0** | 基盤整備 | `uv sync` が通り、テストが走る | 1日 |
+| **M0** | 基盤整備 | `pixi run -e gpu gpu-check` が通り、テストが走る | 1日 |
 | **M1** | 対話できる | CLIで定型フォーマットの応答が返る | 1週 |
 | **M2** | 記憶と知識を持つ | 過去の会話を覚え、自分の資料を検索して答える | 2〜3週 |
 | **M3** | 中身を理解し、自作モデルを載せる | 自作GPTが文章生成、小型モデルをペルソナにFT | 1〜2ヶ月 |
@@ -51,11 +51,26 @@
 
 ## 3. Phase 0: 基盤整備（M0）
 
-- [ ] `uv` によるPythonプロジェクト初期化（`pyproject.toml`）
+- [x] `pixi.toml` の作成（環境: `default` / `laptop` / `gpu`）
+- [x] `.env.example` を用意（APIキーの置き場所を統一）
+- [x] `ruff` + `pytest` を feature に登録、タスクを定義
 - [ ] ディレクトリ構成の確定（§6）
-- [ ] `ruff` + `pytest` の導入、`make`（or `just`）タスク
-- [ ] `.env.example` を用意（APIキーの置き場所を統一）
-- [ ] GPUマシンでの動作確認（`torch.cuda.is_available()`）
+- [ ] GPUマシンでの動作確認（`pixi run -e gpu gpu-check`）
+- [ ] `nvidia-smi` の CUDA Version を見て、`pixi.toml` のwheel indexを確定する
+      （[01_SETUP.md](01_SETUP.md) §4.3）
+
+### なぜ pixi か
+
+このプロジェクトは**Pythonだけで完結しない**。
+
+| フェーズ | 非Python依存 |
+|---|---|
+| A5 常駐オーバーレイ | Node.js（Electron採用時） |
+| **B7 量子化・高速化** | **cmake + C++コンパイラ**（llama.cpp のビルド） |
+| B3 学習 | CUDA Toolkit |
+
+pixi はこれらを1つのlockfileで管理でき、マシンごとの差異を `[environments]` で
+切り替えられる。複数マシンをまたぐ本プロジェクトの前提に合う。
 
 ---
 
@@ -189,8 +204,11 @@
 llm_ws/
 ├── README.md
 ├── CLAUDE.md               # Claude Code 用のプロジェクト文脈
-├── pyproject.toml          # uv管理
+├── pixi.toml               # 依存とタスク（Python/CUDA/cmake/Node.js）
+├── pixi.lock               # コミットする。マシン間の再現性の根拠
 ├── .env.example
+├── scripts/                # 補助スクリプト
+│   └── gpu_check.py
 ├── docs/
 │   ├── 00_PLAN.md          # このファイル
 │   ├── 01_SETUP.md

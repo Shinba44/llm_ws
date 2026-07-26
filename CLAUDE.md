@@ -25,7 +25,12 @@ Claude Code がこのリポジトリで作業する際の文脈。
 
 ## 環境
 
-- Python 3.10+、パッケージ管理は `uv`
-- 実行は `uv run <cmd>`
+- パッケージ管理は **pixi**（`pixi.toml`）。Python・CUDA・cmake・Node.js を一括管理する
+- 実行は `pixi run -e <環境> <タスク>`。環境は `laptop`（GPUなし）と `gpu`（GPU機）
+- **依存を追加する時は feature を指定する**。例: `pixi add --pypi --feature train datasets`
+  共通featureに入れるとGPUなしのマシンで環境が壊れる
+- **conda-forge と PyPI を同じ依存チェーンで混ぜない**。torch系はすべて `--pypi`
+- `pixi.lock` はコミットする。`.pixi/` はコミットしない
 - マシンによってGPUの有無が異なる。GPU前提のコードを書く際は
   `torch.cuda.is_available()` でフォールバックする
+- このプロジェクトはPythonだけで完結しない（A5はJS/Node、B7はC++/cmake）

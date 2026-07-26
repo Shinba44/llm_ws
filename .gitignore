@@ -10,6 +10,9 @@ __pycache__/
 venv/
 *.egg-info/
 
+# pixi（環境の実体。pixi.lock はコミットする）
+.pixi/
+
 # モデル重み・推論エンジン
 *.pth
 *.pt

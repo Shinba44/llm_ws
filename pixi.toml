@@ -1,0 +1,112 @@
+# パーソナルLLMエージェント自作プロジェクト
+#
+# 環境の使い分けは docs/01_SETUP.md §3 を参照。
+#   pixi run -e gpu    ... GPU機。トラックB本番
+#   pixi run -e laptop ... GPUなしのマシン
+#
+# 依存を追加する時は feature を必ず指定すること（docs/01_SETUP.md §5）。
+# conda-forge と PyPI で同じ依存チェーンを混ぜないこと。torch 系はすべて --pypi。
+
+[workspace]
+name = "llm_ws"
+description = "常駐・解析・能動通知を行うパーソナルLLMエージェントの自作プロジェクト"
+version = "0.1.0"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+
+# ─────────────────────────────────────────
+# タスク
+# ─────────────────────────────────────────
+
+[tasks]
+agent = { cmd = "python -m agent.cli", description = "エージェントCLIを起動する" }
+demo = { cmd = "python -c \"import webbrowser,pathlib; webbrowser.open(pathlib.Path('docs/assets/field_demo.html').resolve().as_uri())\"", description = "解析フィールドのデモをブラウザで開く" }
+lint = { cmd = "ruff check .", description = "静的解析" }
+fmt = { cmd = "ruff format .", description = "整形" }
+test = { cmd = "pytest -q", description = "テスト" }
+
+# 複数行のコマンドはインラインテーブルに書けないため、テーブル節で定義する
+[tasks.machine-info]
+description = "マシンプロファイル記入用の情報を出力する"
+cmd = """
+echo "CPU: $(LANG=C lscpu | grep 'Model name' | sed 's/.*: *//')" &&
+echo "RAM: $(free -g | awk '/^Mem:/{print $2}') GB" &&
+(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || echo "GPU: none")
+"""
+
+[tasks.gpu-check]
+description = "PyTorchからGPUが見えるか確認する"
+cmd = "python scripts/gpu_check.py"
+
+# ─────────────────────────────────────────
+# feature: トラックA（エージェント本体）
+# ─────────────────────────────────────────
+
+[feature.agent.dependencies]
+ruff = "*"
+pytest = "*"
+
+[feature.agent.pypi-dependencies]
+anthropic = "*"
+python-dotenv = "*"
+rich = "*"
+prompt-toolkit = "*"
+
+# ─────────────────────────────────────────
+# feature: PyTorch（CPU / GPU で排他）
+# ─────────────────────────────────────────
+
+[feature.cpu.pypi-dependencies]
+torch = { version = ">=2.5", index = "https://download.pytorch.org/whl/cpu" }
+
+# cuda を宣言しないと仮想パッケージ __cuda が立たず、CPU版が選ばれる。消さないこと。
+#
+# pixi 0.72 はこの書き方に非推奨警告を出し、[workspace] の
+# platforms = [{ platform = "linux-64", cuda = "12" }] を勧めてくる。
+# ただしその記法は workspace 直下でしか使えず、feature 単位で指定できない。
+# workspace 側に書くと GPU の無いマシンで laptop 環境を作る時に
+# システム要件チェックで弾かれるため、ここでは feature 単位の旧記法を使う。
+# feature 単位の新記法が入ったら移行する。
+[feature.gpu.system-requirements]
+cuda = "12"
+
+[feature.gpu.pypi-dependencies]
+torch = { version = ">=2.5", index = "https://download.pytorch.org/whl/cu128" }
+
+# ─────────────────────────────────────────
+# feature: トラックB（学習・ファインチューニング）
+# B3以降で必要になったら pixi add --pypi --feature train <pkg>
+# ─────────────────────────────────────────
+
+[feature.train.pypi-dependencies]
+numpy = "*"
+tqdm = "*"
+tensorboard = "*"
+
+# ─────────────────────────────────────────
+# feature: ネイティブビルド（B7 llama.cpp）
+# ─────────────────────────────────────────
+
+[feature.native.dependencies]
+cmake = "*"
+ninja = "*"
+cxx-compiler = "*"
+
+# ─────────────────────────────────────────
+# feature: 常駐オーバーレイUI（A5 Electron）
+# ─────────────────────────────────────────
+
+[feature.ui.dependencies]
+nodejs = "22.*"
+
+# ─────────────────────────────────────────
+# 環境
+# ─────────────────────────────────────────
+
+[environments]
+default = ["agent", "cpu"]
+laptop = ["agent", "cpu", "ui"]
+gpu = ["agent", "gpu", "train", "native"]
