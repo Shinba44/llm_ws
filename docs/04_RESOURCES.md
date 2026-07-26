@@ -72,22 +72,43 @@ https://karpathy.ai/zero-to-hero.html
 
 ---
 
-## B7: 量子化・サービング
+## A0 / B7: ローカル推論・量子化・サービング
 
-- llama.cpp https://github.com/ggml-org/llama.cpp
-- Ollama https://ollama.com/
-- vLLM https://docs.vllm.ai/
-- GGUF量子化の種類と精度劣化の比較記事
+**本プロジェクトの土台。** 商用APIを使わないため最初に着手する（00_PLAN.md §9）。
+
+- ★ Ollama https://ollama.com/ — 最短で立つ。OpenAI互換エンドポイント付き
+- ★ llama.cpp https://github.com/ggml-org/llama.cpp — GBNF文法制約を使うならこちら
+- llama.cpp の server ドキュメント（`examples/server`）
+- vLLM https://docs.vllm.ai/ — スループット重視の比較対象
+- GGUF量子化の種類（Q4_K_M / Q6_K / Q8_0 / imatrix）と精度劣化の比較記事
+
+## 制約付きデコーディング（A1の要）
+
+小型モデルに出力形式を守らせる技術。APIを使っていたら学ばずに済んだ領域。
+
+- ★ GBNF Guide（llama.cpp `grammars/README.md`）— BNF風の文法で出力を制限する
+- Outlines https://github.com/dottxt-ai/outlines — 正規表現/JSON schemaで生成を制約
+- Ollama の structured outputs（`format` パラメータ）
+- 論文: Guiding LLMs The Right Way / Grammar-Constrained Decoding
+
+## ローカルモデル選定
+
+- Qwen3 https://huggingface.co/Qwen — 日本語も比較的良く、サイズの選択肢が広い
+- Gemma 3 https://huggingface.co/google
+- 日本語特化: [Sarashina](https://huggingface.co/sbintuitions), [Swallow](https://huggingface.co/tokyotech-llm), [llm-jp](https://huggingface.co/llm-jp)
+- [Nejumi LLMリーダーボード](https://wandb.ai/llm-leaderboard) — 日本語性能の比較
 
 ---
 
 ## トラックA: エージェント構築（RAG・ツール利用・常駐）
 
+APIは使わないが、**エージェントの設計論はプロバイダに依存しない**ので参考にする。
+
 - ★ Anthropic — Building Effective Agents https://www.anthropic.com/engineering/building-effective-agents
-- Anthropic API docs（Tool use, Prompt caching, Extended thinking） https://docs.claude.com/
-- Claude Agent SDK — エージェントループを自作する前に、既存の設計を見ておく
-- ReAct https://arxiv.org/abs/2210.03629
+  （ワークフローとエージェントの区別、設計パターン。実装非依存で読める）
+- ★ ReAct https://arxiv.org/abs/2210.03629 — A4でツール対応モデルが使えない時の代替手段
 - RAG 原論文 https://arxiv.org/abs/2005.11401
+- Toolformer https://arxiv.org/abs/2302.04761 — ツール利用を学習させる発想（B6の拡張案）
 
 埋め込みモデル（日本語）:
 - `intfloat/multilingual-e5-large` / `-small`

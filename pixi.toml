@@ -49,8 +49,12 @@ cmd = "python scripts/gpu_check.py"
 ruff = "*"
 pytest = "*"
 
+# 商用APIは使わない方針（docs/00_PLAN.md §9）。
+# openai パッケージは Ollama / llama.cpp server の OpenAI互換エンドポイントを
+# 叩くためのクライアントとして使う。OpenAI社のサービスには接続しない。
 [feature.agent.pypi-dependencies]
-anthropic = "*"
+openai = "*"
+httpx = "*"
 python-dotenv = "*"
 rich = "*"
 prompt-toolkit = "*"

@@ -168,6 +168,70 @@ pixi add --feature native cmake ninja
 
 ---
 
+## 5.5 ローカル推論基盤（A0）
+
+本プロジェクトは商用APIを使わない（[00_PLAN.md](00_PLAN.md) §9）。
+推論はGPU機に立てたサーバで行う。
+
+### 5.5.1 Ollama（推奨・最短）
+
+pixi管理外のシステムツールとして入れる。
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+
+# VRAMに応じて選ぶ（00_PLAN.md §7-2）
+ollama pull qwen3:8b
+
+ollama run qwen3:8b "こんにちは"      # 動作確認
+```
+
+OpenAI互換エンドポイントが `http://localhost:11434/v1` に立つ。`.env` に設定する。
+
+```bash
+AGENT_BASE_URL=http://localhost:11434/v1
+AGENT_MODEL=qwen3:8b
+AGENT_API_KEY=local
+```
+
+### 5.5.2 llama.cpp（GBNF文法制約を使う場合）
+
+応答フォーマットの強制（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）にGBNF文法を使うなら
+llama.cpp を直接使う。ビルドには `gpu` 環境の `native` feature が要る。
+
+```bash
+pixi shell -e gpu          # cmake / ninja / C++コンパイラが入る
+git clone https://github.com/ggml-org/llama.cpp ~/llama.cpp
+cmake -B build -S ~/llama.cpp -DGGML_CUDA=ON
+cmake --build build -j
+```
+
+サーバ起動:
+
+```bash
+./build/bin/llama-server -m <model>.gguf --host 0.0.0.0 --port 8080 -ngl 99
+```
+
+### 5.5.3 ノートPCから使う
+
+GPU機でサーバを `--host 0.0.0.0` で起動し、ノートPCの `.env` を向ける。
+
+```bash
+AGENT_BASE_URL=http://<GPU機のIP>:11434/v1
+```
+
+これでノートPC側にモデルを置かずにエージェント開発ができる。
+
+### 5.5.4 記録すること
+
+A0の完了条件として、以下を [03_PROGRESS.md](03_PROGRESS.md) に残す。
+
+- 試したモデルと量子化レベル
+- tokens/sec と VRAM使用量
+- 日本語の品質の印象（実際に喋らせた所感）
+
+---
+
 ## 6. マシンプロファイル
 
 **新しいマシンで作業を始めたら、この表に追記してコミットすること。**
