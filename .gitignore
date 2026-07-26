@@ -1,0 +1,31 @@
+# colcon / ROS 2 ビルド生成物
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# モデル重み・推論エンジン
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.gguf
+*.onnx
+*.engine
+
+# データ
+data/
+datasets/
+*.bag
+*.db3
+*.mp4
+
+# 秘密情報
+.env
+*.key
