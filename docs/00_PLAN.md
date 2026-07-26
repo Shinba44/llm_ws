@@ -8,6 +8,7 @@
 - [02_AGENT_SPEC.md](02_AGENT_SPEC.md) — エージェントの設計仕様
 - [03_PROGRESS.md](03_PROGRESS.md) — 進捗ログ（**作業再開時はここを読む**）
 - [04_RESOURCES.md](04_RESOURCES.md) — 学習リソース
+- [05_FIELD_VISUAL.md](05_FIELD_VISUAL.md) — 解析フィールドの視覚仕様（A5のUI）
 
 ---
 
@@ -103,6 +104,7 @@
 
 ### A5. 常駐と能動通知 【M4】
 本エージェントの一番の特徴。**聞かれていないことを自分から言ってくる**。
+視覚表現の仕様は [05_FIELD_VISUAL.md](05_FIELD_VISUAL.md)（参照実装あり）。
 
 - [ ] バックグラウンド常駐プロセス（systemd user unit / デーモン）
 - [ ] イベント監視: ファイル変更、Gitリポジトリ、カレンダー、CI、RSS
@@ -194,7 +196,10 @@ llm_ws/
 │   ├── 01_SETUP.md
 │   ├── 02_AGENT_SPEC.md
 │   ├── 03_PROGRESS.md      # 進捗ログ
-│   └── 04_RESOURCES.md
+│   ├── 04_RESOURCES.md
+│   ├── 05_FIELD_VISUAL.md  # 解析フィールドの視覚仕様
+│   └── assets/
+│       └── field_demo.html # 上記の参照実装（単一ファイル・外部依存なし）
 ├── agent/                  # トラックA: エージェント本体
 │   ├── cli.py
 │   ├── persona/            # システムプロンプト・応答フォーマット

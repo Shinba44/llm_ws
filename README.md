@@ -26,6 +26,7 @@
 | [docs/02_AGENT_SPEC.md](docs/02_AGENT_SPEC.md) | エージェントの設計仕様 |
 | [docs/03_PROGRESS.md](docs/03_PROGRESS.md) | 進捗ログ。**作業再開時はここを読む** |
 | [docs/04_RESOURCES.md](docs/04_RESOURCES.md) | 学習リソース |
+| [docs/05_FIELD_VISUAL.md](docs/05_FIELD_VISUAL.md) | 解析フィールドの視覚仕様（A5のUI）。参照実装同梱 |
 
 ## 新しいマシンで作業を始める
 

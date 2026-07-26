@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>思考空間 — 解析フィールド</title>
+
+<style>
+  :root {
+    --void:  #04070e;
+    --deep:  #08121c;
+    --line:  #16334a;
+    --cyan:  #56d8f5;
+    --ice:   #e2f4ff;
+    --dim:   #6a8399;
+    --amber: #ffa94d;
+    --mint:  #6fe7c0;
+
+    --accent: var(--cyan);   /* JS が 80ms 間隔で更新する（色相が漂う） */
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --jp: "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP", "Noto Sans JP",
+          "Yu Gothic", Meiryo, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ice);
+    font-family: var(--jp);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 20px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ─────────── フィールド ─────────── */
+
+  .stage {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    max-height: 78vh;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+    background:
+      radial-gradient(ellipse 62% 52% at 50% 46%,
+        color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 72%),
+      linear-gradient(to bottom, var(--deep) 0%, var(--void) 78%);
+  }
+
+  .stage.is-expanded {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    max-height: none;
+    aspect-ratio: auto;
+    border-width: 0;
+  }
+
+  #field { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* 角のマーカー（図形の外側にのみ配置） */
+  .mark {
+    position: absolute;
+    width: 22px; height: 22px;
+    border: 1px solid color-mix(in srgb, var(--accent) 58%, transparent);
+    pointer-events: none;
+  }
+  .mark.tl { top: 14px; left: 14px;  border-right: 0; border-bottom: 0; }
+  .mark.tr { top: 14px; right: 14px; border-left: 0;  border-bottom: 0; }
+  .mark.bl { bottom: 78px; left: 14px;  border-right: 0; border-top: 0; }
+  .mark.br { bottom: 78px; right: 14px; border-left: 0;  border-top: 0; }
+
+  /* ─────────── HUD ─────────── */
+
+  .hud {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.95;
+    color: var(--dim);
+    letter-spacing: .11em;
+    pointer-events: none;
+  }
+  .hud-tl { top: 46px; left: 22px; }
+  .hud-tr { top: 46px; right: 22px; text-align: right; }
+  .hud .k { color: color-mix(in srgb, var(--dim) 78%, transparent); }
+  .hud .v { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  /* 現在の2極を示す色見本 */
+  .swatch {
+    display: inline-block;
+    width: 8px; height: 8px;
+    margin-left: 6px;
+    vertical-align: -1px;
+    border: 1px solid rgba(255,255,255,.22);
+  }
+
+  .state-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 11px;
+    margin-bottom: 9px;
+    border: 1px solid color-mix(in srgb, var(--accent) 48%, transparent);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    color: var(--accent);
+    font-size: 10px;
+    letter-spacing: .24em;
+  }
+  .state-chip::before {
+    content: "";
+    width: 5px; height: 5px;
+    background: currentColor;
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: .2; } }
+
+  /* 出力（フィールドの外、下端の帯） */
+  .readout {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    min-height: 62px;
+    padding: 17px 22px 19px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    background: linear-gradient(to top,
+      color-mix(in srgb, var(--void) 94%, transparent) 34%, transparent);
+  }
+
+  .prefix {
+    flex: none;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 1px 9px;
+    border: 1px solid currentColor;
+    color: var(--accent);
+  }
+  .prefix[data-p="告"] { color: var(--amber); }
+  .prefix[data-p="提"] { color: var(--mint); }
+  .prefix[data-p="否"] { color: var(--dim); }
+
+  .line {
+    font-size: clamp(14px, 2.1vw, 17px);
+    letter-spacing: .06em;
+    min-height: 1.5em;
+  }
+  .caret {
+    display: inline-block;
+    width: 9px; height: 1.05em;
+    margin-left: 3px;
+    background: var(--accent);
+    vertical-align: -.15em;
+    animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ─────────── 操作 ─────────── */
+
+  .panel { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+  button {
+    font-family: var(--jp);
+    font-size: 13px;
+    letter-spacing: .1em;
+    padding: 9px 18px;
+    color: var(--ice);
+    background: color-mix(in srgb, var(--line) 26%, transparent);
+    border: 1px solid color-mix(in srgb, var(--line) 92%, transparent);
+    cursor: pointer;
+    transition: background .2s ease, border-color .2s ease, color .2s ease;
+  }
+  button:hover {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 24%, transparent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .panel .spacer { flex: 1 1 auto; }
+
+  /* ─────────── 解説 ─────────── */
+
+  .notes { display: flex; flex-direction: column; gap: 14px; }
+
+  h2 {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .26em;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+
+  .table-scroll { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 14px 9px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .18em;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+  td:first-child  { font-family: var(--mono); font-size: 12px; color: var(--cyan); white-space: nowrap; }
+  td:nth-child(2) { color: var(--ice); }
+  td:last-child   { color: var(--dim); }
+
+  .tail {
+    margin: 0;
+    max-width: 64ch;
+    font-size: 13.5px;
+    line-height: 1.85;
+    color: var(--dim);
+  }
+  .tail code {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--cyan);
+    background: color-mix(in srgb, var(--line) 26%, transparent);
+    padding: 1px 5px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .caret, .state-chip::before { animation: none; }
+    .caret { opacity: 1; }
+  }
+
+  @media (max-width: 620px) {
+    .hud { font-size: 10px; }
+    .hud-tr { display: none; }
+  }
+</style>
+
+</head>
+<body>
+
+<div class="shell">
+
+  <div class="stage" id="stage" data-state="idle">
+    <canvas id="field"></canvas>
+
+    <span class="mark tl"></span><span class="mark tr"></span>
+    <span class="mark bl"></span><span class="mark br"></span>
+
+    <div class="hud hud-tl">
+      <div class="state-chip" id="chip">待機</div>
+      <div><span class="k">演算負荷</span> <span class="v" id="m-load">04</span><span class="k">%</span></div>
+      <div><span class="k">結節点</span> <span class="v" id="m-nodes">0</span></div>
+      <div><span class="k">接続</span> <span class="v" id="m-edges">0</span></div>
+    </div>
+
+    <div class="hud hud-tr">
+      <div><span class="k">寒色相</span> <span class="v" id="m-cool">000</span><span class="swatch" id="sw-cool"></span></div>
+      <div><span class="k">暖色相</span> <span class="v" id="m-warm">000</span><span class="swatch" id="sw-warm"></span></div>
+      <div><span class="v" id="m-depth">0.00</span> <span class="k">走査深度</span></div>
+      <div><span class="v" id="m-fps">60</span> <span class="k">fps</span></div>
+    </div>
+
+    <div class="readout" aria-live="polite">
+      <span class="prefix" id="prefix" data-p="是">是</span>
+      <span class="line" id="line"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <button id="btn-idle" aria-pressed="true">待機</button>
+    <button id="btn-analyze" aria-pressed="false">解析開始</button>
+    <button id="btn-alert" aria-pressed="false">通知発生</button>
+    <span class="spacer"></span>
+    <button id="btn-expand">拡大表示</button>
+  </div>
+
+  <section class="notes">
+    <h2>構成要素</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>要素</th><th>生成方法</th><th>色相の割り当て</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>01 hull</td>
+            <td>頂点数11・7・5の不規則多角形。各頂点が独立の周期と位相で揺れる</td>
+            <td>暖色極（多角形ごとに +14° ずつずらす）</td>
+          </tr>
+          <tr>
+            <td>02 lattice</td>
+            <td>120個の結節点と、距離しきい値で毎フレーム張り直す近接グラフ</td>
+            <td>寒色極 + 奥行きによる ±22° の変調</td>
+          </tr>
+          <tr>
+            <td>03 shards</td>
+            <td>乱数で球面配置した頂点を結ぶ多面体。読み込むたび形が違う</td>
+            <td>破片ごとに固定の混合比で2極を補間</td>
+          </tr>
+          <tr>
+            <td>04 plane</td>
+            <td>空間を上下する走査面。通過した結節点が発光する</td>
+            <td>寒色極 +30°</td>
+          </tr>
+          <tr>
+            <td>05 depth</td>
+            <td>透視投影と深度減衰。Z値で線の濃度・太さを変える</td>
+            <td>手前ほど彩度が高い</td>
+          </tr>
+          <tr>
+            <td>06 chroma</td>
+            <td>周期の噛み合わない正弦波3本を合成した擬似ノイズで色相を漂わせる</td>
+            <td>寒色極 168–262° / 暖色極 335–70°</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="tail">
+      色相は寒色極と暖色極の2系統が独立して漂います。周波数が無理数比なので周期が
+      一致せず、同じ配色の瞬間が繰り返されません。両極を別の要素に割り当てているため、
+      どの瞬間を切り取っても寒色と暖色が同時に画面上にあります。「通知」状態では
+      寒色極が暖色側へ引き寄せられ、画面全体が暖色に転びます。すべて Canvas 2D に
+      自前の透視投影で描画しており、3Dライブラリも外部フォントも未使用です。
+      図形内に文字は置いていません。
+    </p>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  const cvs = document.getElementById("field");
+  const ctx = cvs.getContext("2d");
+
+  /* ── 空間と投影 ───────────────────────── */
+
+  const DEPTH = 340;
+  const FOV = 760;
+  let W = 0, H = 0, cx = 0, cy = 0, scale = 1;
+  let yaw = 0, pitch = 0;
+
+  const project = (x, y, z) => {
+    const cw = Math.cos(yaw), sw = Math.sin(yaw);
+    const X = x * cw - z * sw;
+    let Z = x * sw + z * cw;
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const Y = y * cp - Z * sp;
+    Z = y * sp + Z * cp;
+    const s = FOV / (FOV + Z + DEPTH * 0.55);
+    return { x: cx + X * s * scale, y: cy + Y * s * scale, s, z: Z };
+  };
+
+  /* ── 色 ──────────────────────────────── */
+
+  // 周期の噛み合わない正弦波3本 → おおよそ [-1, 1] の擬似ノイズ
+  const wobble = (u, seed) =>
+    0.62 * Math.sin(u * 0.041 + seed) +
+    0.27 * Math.sin(u * 0.0977 + seed * 2.3) +
+    0.11 * Math.sin(u * 0.2131 + seed * 4.1);
+
+  const lerpHue = (a, b, k) => a + (((b - a + 540) % 360) - 180) * k;
+
+  // 黄色域は同じ明度でも明るく見えるので落とす
+  const hsl = (h, a, l = 62, s = 88) => {
+    h = ((h % 360) + 360) % 360;
+    if (h > 34 && h < 82) l -= 10;
+    return `hsla(${h.toFixed(0)},${s}%,${l.toFixed(0)}%,${a.toFixed(3)})`;
+  };
+
+  let hueT = 0;
+  let coolHue = 205, warmHue = 22;
+
+  /* ── 01 不規則多角形 ────────────────── */
+
+  const makeHull = (n, radius, z, speed) => ({
+    z,
+    verts: Array.from({ length: n }, (_, i) => ({
+      base: (i / n) * Math.PI * 2 + rand(-0.22, 0.22),
+      r: radius * rand(0.62, 1.0),
+      amp: rand(0.14, 0.42),
+      w: rand(0.25, 0.85) * speed,
+      ph: rand(0, Math.PI * 2),
+      wob: rand(0.1, 0.35),
+      zAmp: radius * rand(0.08, 0.3)
+    }))
+  });
+
+  const hulls = [
+    makeHull(11, 208, 0, 1.0),
+    makeHull(7, 132, -70, 1.35),
+    makeHull(5, 268, 90, 0.7)
+  ];
+
+  /* ── 02 近接グラフ ──────────────────── */
+
+  const NODES = 120;
+  const nodes = Array.from({ length: NODES }, () => ({
+    x: rand(-330, 330), y: rand(-230, 230), z: rand(-DEPTH, DEPTH),
+    vx: rand(-1, 1), vy: rand(-1, 1), vz: rand(-1, 1),
+    ph: rand(0, Math.PI * 2)
+  }));
+
+  /* ── 03 多面体の破片 ────────────────── */
+
+  const shards = Array.from({ length: 7 }, () => {
+    const n = Math.round(rand(5, 9));
+    const size = rand(26, 62);
+    const verts = Array.from({ length: n }, () => {
+      const th = rand(0, Math.PI * 2), ph = Math.acos(rand(-1, 1)), r = size * rand(0.55, 1);
+      return [r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph)];
+    });
+    const edges = [];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        const d = Math.hypot(verts[i][0] - verts[j][0], verts[i][1] - verts[j][1], verts[i][2] - verts[j][2]);
+        if (d < size * 1.25) edges.push([i, j]);
+      }
+    return {
+      verts, edges,
+      cx: rand(-360, 360), cy: rand(-240, 240), cz: rand(-DEPTH, DEPTH),
+      ax: rand(-0.4, 0.4), ay: rand(-0.4, 0.4), az: rand(-0.4, 0.4),
+      a: rand(0, Math.PI * 2), drift: rand(-8, 8),
+      mix: Math.random()          // 寒色極と暖色極の混合比（破片ごとに固定）
+    };
+  });
+
+  const rot3 = (v, rx, ry, rz) => {
+    let [x, y, z] = v;
+    let c = Math.cos(rx), s = Math.sin(rx);
+    [y, z] = [y * c - z * s, y * s + z * c];
+    c = Math.cos(ry); s = Math.sin(ry);
+    [x, z] = [x * c + z * s, -x * s + z * c];
+    c = Math.cos(rz); s = Math.sin(rz);
+    [x, y] = [x * c - y * s, x * s + y * c];
+    return [x, y, z];
+  };
+
+  /* ── 状態 ──────────────────────────── */
+
+  const STATES = {
+    idle:    { drift: .30, link: 76,  scan: .16, glow: .50, load: 4,  hueSpd: 1.0, warmPull: 0, label: "待機"   },
+    analyze: { drift: 1.7, link: 104, scan: .95, glow: 1.25, load: 87, hueSpd: 2.4, warmPull: 0, label: "解析中" },
+    alert:   { drift: .75, link: 84,  scan: .42, glow: 1.00, load: 22, hueSpd: 1.5, warmPull: 1, label: "通知"   }
+  };
+
+  const SCRIPT = {
+    idle: [
+      ["是", "待機中です。"],
+      ["解", "監視対象は3件です。"],
+      ["告", "新規の変更は検出されていません。"]
+    ],
+    analyze: [
+      ["解", "対象を走査しています。"],
+      ["解", "構造を分解し、依存関係を照合中です。"],
+      ["解", "参照文書34件との突合を完了しました。"],
+      ["提", "3件の改善候補を検出しました。"]
+    ],
+    alert: [
+      ["告", "テストが1件失敗しています。"],
+      ["提", "直近のコミットの確認を推奨します。"],
+      ["否", "自動修正は実行していません。"]
+    ]
+  };
+
+  const stage    = document.getElementById("stage");
+  const chip     = document.getElementById("chip");
+  const prefixEl = document.getElementById("prefix");
+  const lineEl   = document.getElementById("line");
+  const mLoad    = document.getElementById("m-load");
+  const mNodes   = document.getElementById("m-nodes");
+  const mEdges   = document.getElementById("m-edges");
+  const mDepth   = document.getElementById("m-depth");
+  const mFps     = document.getElementById("m-fps");
+  const mCool    = document.getElementById("m-cool");
+  const mWarm    = document.getElementById("m-warm");
+  const swCool   = document.getElementById("sw-cool");
+  const swWarm   = document.getElementById("sw-warm");
+
+  let state = "idle";
+  let drift = .30, driftT = .30;
+  let link = 76, linkT = 76;
+  let scanV = .16, scanVT = .16;
+  let glow = .50, glowT = .50;
+  let load = 4, loadT = 4;
+  let hueSpd = 1, hueSpdT = 1;
+  let warmPull = 0, warmPullT = 0;
+
+  let t = 0, scanY = -240, scanDir = 1, edgeCount = 0, burst = 0;
+
+  /* ── サイズ ───────────────────────── */
+
+  const resize = () => {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const r = cvs.getBoundingClientRect();
+    W = r.width; H = r.height;
+    cx = W / 2; cy = H / 2 - 14;
+    scale = Math.min(W / 900, H / 620) * 1.5;
+    cvs.width = Math.round(W * dpr);
+    cvs.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  new ResizeObserver(resize).observe(cvs);
+
+  /* ── タイプライタ ─────────────────── */
+
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  let typeTimer = null, holdTimer = null, queue = [], qi = 0;
+
+  const typeNext = () => {
+    const [p, text] = queue[qi];
+    prefixEl.textContent = p;
+    prefixEl.dataset.p = p;
+    lineEl.textContent = "";
+    lineEl.appendChild(caret);
+
+    let i = 0;
+    const step = () => {
+      if (i < text.length) {
+        lineEl.textContent = text.slice(0, ++i);
+        lineEl.appendChild(caret);
+        typeTimer = setTimeout(step, 34 + Math.random() * 40);
+      } else {
+        holdTimer = setTimeout(() => { qi = (qi + 1) % queue.length; typeNext(); }, 2600);
+      }
+    };
+    if (reduced) {
+      lineEl.textContent = text;
+      holdTimer = setTimeout(() => { qi = (qi + 1) % queue.length; typeNext(); }, 3200);
+    } else step();
+  };
+
+  /* ── 状態遷移 ─────────────────────── */
+
+  const buttons = [
+    { key: "idle",    el: document.getElementById("btn-idle") },
+    { key: "analyze", el: document.getElementById("btn-analyze") },
+    { key: "alert",   el: document.getElementById("btn-alert") }
+  ];
+
+  const setState = (next) => {
+    state = next;
+    const s = STATES[next];
+    stage.dataset.state = next;
+    chip.textContent = s.label;
+    driftT = s.drift; linkT = s.link; scanVT = s.scan;
+    glowT = s.glow; loadT = s.load;
+    hueSpdT = s.hueSpd; warmPullT = s.warmPull;
+    burst = 1;
+
+    for (const b of buttons) b.el.setAttribute("aria-pressed", String(b.key === next));
+
+    clearTimeout(typeTimer); clearTimeout(holdTimer);
+    queue = SCRIPT[next]; qi = 0;
+    typeNext();
+  };
+
+  for (const b of buttons) b.el.addEventListener("click", () => setState(b.key));
+
+  const expandBtn = document.getElementById("btn-expand");
+  expandBtn.addEventListener("click", () => {
+    const on = stage.classList.toggle("is-expanded");
+    expandBtn.textContent = on ? "元に戻す" : "拡大表示";
+    resize();
+  });
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && stage.classList.contains("is-expanded")) expandBtn.click();
+  });
+
+  /* ── 描画 ─────────────────────────── */
+
+  const drawHulls = () => {
+    for (let hi = 0; hi < hulls.length; hi++) {
+      const h = hulls[hi];
+      const hue = warmHue + hi * 14;
+      const pts = h.verts.map(v => {
+        const r = v.r * (1 + Math.sin(t * v.w + v.ph) * v.amp);
+        const a = v.base + Math.sin(t * v.w * 0.6 + v.ph * 1.7) * v.wob;
+        const z = h.z + Math.sin(t * v.w * 0.8 + v.ph) * v.zAmp;
+        return project(Math.cos(a) * r, Math.sin(a) * r, z);
+      });
+
+      const fade = 1 - hi * 0.22;
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.lineWidth = (1.9 - hi * 0.4) * (0.7 + glow * 0.4);
+      ctx.strokeStyle = hsl(hue, 0.5 * fade * (0.45 + glow * 0.5), 64);
+      ctx.stroke();
+
+      // 頂点は円ではなく正方形
+      ctx.fillStyle = hsl(hue, 0.85 * fade, 70);
+      for (const p of pts) {
+        const w = 3.2 * p.s;
+        ctx.fillRect(p.x - w / 2, p.y - w / 2, w, w);
+      }
+    }
+  };
+
+  const drawLattice = (dt) => {
+    for (const n of nodes) {
+      n.ph += dt * 0.4;
+      n.x += n.vx * drift * dt * 26;
+      n.y += (n.vy + Math.sin(n.ph) * 0.3) * drift * dt * 26;
+      n.z += n.vz * drift * dt * 26;
+      if (n.x < -380 || n.x > 380) n.vx *= -1;
+      if (n.y < -270 || n.y > 270) n.vy *= -1;
+      if (n.z < -DEPTH || n.z > DEPTH) n.vz *= -1;
+    }
+
+    const proj = nodes.map(n => {
+      const p = project(n.x, n.y, n.z);
+      p.hit = Math.max(0, 1 - Math.abs(n.y - scanY) / 52);
+      p.hue = coolHue + (n.z / DEPTH) * 22;   // 奥行きで色相を変調
+      return p;
+    });
+
+    edgeCount = 0;
+    const lim = link * scale;
+    for (let i = 0; i < proj.length; i++) {
+      const a = proj[i];
+      if (a.s < 0.25) continue;
+      for (let j = i + 1; j < proj.length; j++) {
+        const b = proj[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        if (Math.abs(dx) > lim || Math.abs(dy) > lim) continue;
+        const d = Math.hypot(dx, dy);
+        if (d > lim) continue;
+        edgeCount++;
+        const near = 1 - d / lim;
+        const depth = (a.s + b.s) / 2;
+        const flare = Math.max(a.hit, b.hit);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineWidth = 0.6 * depth + flare * 0.8;
+        // 走査面に触れた線は暖色側へ寄る
+        const eh = lerpHue((a.hue + b.hue) / 2, warmHue, flare * 0.55);
+        ctx.strokeStyle = hsl(eh, near * 0.3 * depth * (0.5 + glow * 0.5) + flare * 0.35, 60);
+        ctx.stroke();
+      }
+    }
+
+    for (const p of proj) {
+      const w = (1.6 + p.hit * 3.4) * p.s;
+      const nh = lerpHue(p.hue, warmHue, p.hit * 0.7);
+      ctx.fillStyle = hsl(nh, (0.32 + p.hit * 0.6) * Math.min(1, p.s * 1.2), 62 + p.hit * 12);
+      ctx.fillRect(p.x - w / 2, p.y - w / 2, w, w);
+    }
+  };
+
+  const drawShards = (dt) => {
+    for (const s of shards) {
+      s.a += dt * 0.35 * drift;
+      s.cy += Math.sin(t * 0.3 + s.drift) * dt * s.drift;
+      const hue = lerpHue(coolHue, warmHue, s.mix);
+      const rx = s.ax * s.a, ry = s.ay * s.a, rz = s.az * s.a;
+      const pv = s.verts.map(v => {
+        const [x, y, z] = rot3(v, rx, ry, rz);
+        return project(x + s.cx, y + s.cy, z + s.cz);
+      });
+      for (const [i, j] of s.edges) {
+        const a = pv[i], b = pv[j];
+        const depth = (a.s + b.s) / 2;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineWidth = 0.9 * depth;
+        ctx.strokeStyle = hsl(hue, 0.28 * depth * (0.5 + glow * 0.5), 58);
+        ctx.stroke();
+      }
+    }
+  };
+
+  const drawScanPlane = () => {
+    const R = 400;
+    const corners = [[-R, scanY, -DEPTH], [R, scanY, -DEPTH], [R, scanY, DEPTH], [-R, scanY, DEPTH]]
+      .map(c => project(c[0], c[1], c[2]));
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const p = corners[i];
+      i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hsl(coolHue + 30, 0.16 + glow * 0.14, 60);
+    ctx.stroke();
+    ctx.fillStyle = hsl(coolHue + 30, 0.035 + glow * 0.03, 55);
+    ctx.fill();
+  };
+
+  const drawBurst = () => {
+    if (burst <= 0.01) return;
+    const r = (1 - burst) * Math.max(W, H) * 0.75;
+    ctx.beginPath();
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const rr = r * (0.78 + Math.sin(i * 2.3 + t) * 0.22);
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr * 0.72;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = hsl(warmHue, burst * 0.5, 66);
+    ctx.stroke();
+  };
+
+  /* ── ループ ───────────────────────── */
+
+  let last = performance.now();
+  let fpsAcc = 0, fpsFrames = 0, cssAcc = 0;
+  const ease = (c, tg, dt, k) => c + (tg - c) * Math.min(1, dt * k);
+
+  const frame = (now) => {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    const step = reduced ? 0 : dt;
+
+    drift = ease(drift, driftT, dt, 2.2);
+    link = ease(link, linkT, dt, 2.2);
+    scanV = ease(scanV, scanVT, dt, 2.2);
+    glow = ease(glow, glowT, dt, 2.6);
+    load = ease(load, loadT, dt, 1.4);
+    hueSpd = ease(hueSpd, hueSpdT, dt, 1.6);
+    warmPull = ease(warmPull, warmPullT, dt, 1.2);
+    burst = Math.max(0, burst - dt * 1.1);
+
+    t += step * 0.9;
+    hueT += step * hueSpd;
+
+    // 2極が独立して漂う。周波数が無理数比なので同じ配色が繰り返されない
+    warmHue = 22 + 48 * wobble(hueT, 3.7);
+    const baseCool = 215 + 47 * wobble(hueT, 0.0);
+    coolHue = lerpHue(baseCool, warmHue - 38, warmPull);   // 通知時は寒色極も暖色へ
+
+    yaw += step * 0.055 * (0.4 + drift * 0.4);
+    pitch = Math.sin(t * 0.14) * 0.14;
+
+    scanY += scanDir * scanV * step * 300;
+    if (scanY > 250) { scanY = 250; scanDir = -1; }
+    if (scanY < -250) { scanY = -250; scanDir = 1; }
+
+    ctx.clearRect(0, 0, W, H);
+    drawScanPlane();
+    drawShards(step);
+    drawLattice(step);
+    drawHulls();
+    drawBurst();
+
+    mLoad.textContent = String(Math.round(load)).padStart(2, "0");
+    mNodes.textContent = String(NODES);
+    mEdges.textContent = String(edgeCount);
+    mDepth.textContent = ((scanY + 250) / 500).toFixed(2);
+
+    // CSS変数の更新は 80ms 間隔に間引く（毎フレームだと再計算が無駄）
+    cssAcc += dt;
+    if (cssAcc >= 0.08) {
+      cssAcc = 0;
+      const cH = ((coolHue % 360) + 360) % 360;
+      const wH = ((warmHue % 360) + 360) % 360;
+      const accent = hsl(lerpHue(coolHue, warmHue, 0.5 + 0.5 * Math.sin(t * 0.07)), 1, 66);
+      document.documentElement.style.setProperty("--accent", accent);
+      mCool.textContent = String(Math.round(cH)).padStart(3, "0");
+      mWarm.textContent = String(Math.round(wH)).padStart(3, "0");
+      swCool.style.background = hsl(cH, 1, 60);
+      swWarm.style.background = hsl(wH, 1, 60);
+    }
+
+    fpsAcc += dt; fpsFrames++;
+    if (fpsAcc >= 0.5) {
+      mFps.textContent = String(Math.round(fpsFrames / fpsAcc));
+      fpsAcc = 0; fpsFrames = 0;
+    }
+
+    requestAnimationFrame(frame);
+  };
+
+  resize();
+  setState("idle");
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
