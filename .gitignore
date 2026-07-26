@@ -26,6 +26,13 @@ datasets/
 *.db3
 *.mp4
 
+# 学習の成果物・実験ログ
+checkpoints/
+runs/
+wandb/
+outputs/
+
 # 秘密情報
 .env
 *.key
+!.env.example
