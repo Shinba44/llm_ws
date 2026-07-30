@@ -13,7 +13,7 @@
 | 進行中のフェーズ | Phase 0 |
 | 最終更新 | 2026-07-30 |
 | 参考 | A5のUI仕様は [05_FIELD_VISUAL.md](05_FIELD_VISUAL.md)（参照実装同梱・着手はM4） |
-| 最終作業マシン | laptop-i5 |
+| 最終作業マシン | roboworks (GPU機) |
 
 ## 次のアクション
 
@@ -47,7 +47,7 @@
 | 推論サーバ | Ollama / llama.cpp server / vLLM | **Ollamaで開始**。GBNF文法が要るならllama.cppへ |
 | GPUマシンのVRAM | — | **GTX 1080 Ti ×2（各11GB / 計22GB）**。Pascal世代 |
 | GPUマシンのCUDAバージョン | cu126 / cu128 / cu130 | **`cu126` + `torch<2.8`**。cu128以降はsm_61を含まない |
-| torch のバージョン | — | **2.7.1+cu126**（Pascal対応の最終版）。実機での動作確認は未実施 |
+| torch のバージョン | — | **2.7.1+cu126**。✅ 実機で動作確認済み（`sm_60` カーネルが cc6.1 で動作） |
 | A0の常用モデル | Qwen3 4B/8B/14B, Gemma 3, Sarashina, Swallow | VRAM確定後にA0で実測して決める |
 | ベクトルDB | 自前numpy → chromadb / faiss / Qdrant | 自前から始める（学習目的） |
 | B6のベースモデル | Qwen3 0.6B〜3B など | A0の結果を見て決定 |
@@ -104,6 +104,21 @@
 - 学んだこと / 詰まったこと
 - 次にやること
 ```
+
+### 2026-07-30 (roboworks / GPU環境の構築完了)
+- `pixi install -e gpu` 成功。**torch 2.7.1+cu126 が GTX 1080 Ti で動作することを実機で確認**
+- 実機の `arch_list` は `sm_50 sm_60 sm_70 sm_75 sm_80 sm_86 sm_90`。
+  `sm_61` は無いが **`sm_60` のカーネルが cc 6.1 で動く**（行列積テスト成功）
+- **CUDAの前方互換規則**: compute capability X.y 向け cubin は X.z（z ≥ y）で実行可能。
+  同一メジャー内でのみ成立する。`sm_61` の完全一致を要求していた初版の
+  `gpu_check.py` は誤検知だったため修正した
+- 対照的に cu128 の `arch_list` は `sm_75` 以上のみで、cc 6.1 に対する
+  実行可能カーネルはゼロ。**cu126 への固定判断は正しかった**
+- `torch.cuda.is_bf16_supported()` は既定でエミュレーションを含むため Pascal でも
+  `True` を返す。`including_emulation=False` で問い合わせるよう修正。
+  **ネイティブbf16は非対応** → B3はfp32主体の方針で確定
+- 空き容量 794GB / glibc 2.35。容量制約は全工程を通して問題にならない
+- 実効VRAM: GPU0 が 9.6GB（デスクトップ描画で約1.3GB消費）、GPU1 が 10.7GB
 
 ### 2026-07-30 (laptop-i5 / GPU機の情報を反映)
 - GPU機 `roboworks-Alienware-Area-51-R4` の構成が判明:

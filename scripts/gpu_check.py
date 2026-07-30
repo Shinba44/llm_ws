@@ -2,14 +2,17 @@
 
     pixi run -e gpu gpu-check
 
-`cuda available: False` になる場合は docs/01_SETUP.md §9 を参照。
-古いGPU（Pascal 等）では torch のビルドに該当アーキテクチャの
-カーネルが含まれているかが決定的に重要なので、それも検査する。
+古いGPU（Pascal 等）では、torch のビルドに実行可能なカーネルが含まれて
+いるかが決定的に重要なので、それを検査する。
+
+判定の根拠は2つ:
+  1. arch_list との突合（CUDAの前方互換規則を考慮する。下記 compatible_archs）
+  2. 実際に行列積を1回走らせる ← こちらが最終的な証拠
 """
 
 import torch
 
-# アーキテクチャ世代の判定に使う（compute capability の major, minor）
+# compute capability から世代名を引く
 GENERATION = {
     (6, 0): "Pascal",
     (6, 1): "Pascal",
@@ -22,6 +25,44 @@ GENERATION = {
     (10, 0): "Blackwell",
     (12, 0): "Blackwell",
 }
+
+
+def parse_arch(tag: str) -> tuple[int, int] | None:
+    """'sm_86' -> (8, 6) / 'sm_120' -> (12, 0)。末尾1桁がminor。"""
+    if not tag.startswith("sm_"):
+        return None
+    digits = tag[3:].rstrip("af+")  # sm_90a のような接尾辞を落とす
+    if not digits.isdigit() or len(digits) < 2:
+        return None
+    return int(digits[:-1]), int(digits[-1])
+
+
+def compatible_archs(arch_list: list[str], major: int, minor: int) -> list[str]:
+    """このデバイスで実行できる cubin を返す。
+
+    CUDAの binary compatibility:
+      compute capability X.y 向けの cubin は X.z (z >= y) のデバイスで動く。
+    したがってメジャーが一致し、かつ cubin 側のマイナーがデバイス以下なら実行可能。
+    例: sm_60 のカーネルは cc 6.1 の GTX 1080 Ti で動作する。
+    """
+    out = []
+    for tag in arch_list:
+        parsed = parse_arch(tag)
+        if parsed and parsed[0] == major and parsed[1] <= minor:
+            out.append(tag)
+    return out
+
+
+def native_bf16() -> bool:
+    """エミュレーションを除いた、ハードウェアとしてのbf16対応。
+
+    torch.cuda.is_bf16_supported() は既定でエミュレーションを含めて判定するため、
+    Pascal でも True を返してしまう。
+    """
+    try:
+        return torch.cuda.is_bf16_supported(including_emulation=False)
+    except TypeError:  # 古いtorchには引数が無い
+        return torch.cuda.is_bf16_supported()
 
 
 def scope_for(vram_gb: float) -> str:
@@ -41,56 +82,54 @@ def main() -> None:
         print("→ docs/01_SETUP.md §9 のトラブルシューティングを確認してください")
         return
 
-    # このtorchビルドに含まれるカーネルのアーキテクチャ一覧
     arch_list = torch.cuda.get_arch_list()
-    print("torchが対応するarch:", " ".join(arch_list))
+    print("torchが同梱するカーネル:", " ".join(arch_list))
     print()
 
     count = torch.cuda.device_count()
     print(f"GPU {count}枚")
 
     warnings: list[str] = []
+    bf16 = native_bf16()
 
     for i in range(count):
         p = torch.cuda.get_device_properties(i)
         cc = (p.major, p.minor)
         gen = GENERATION.get(cc, "不明")
-        vram = p.total_memory / 1024**3
         free = torch.cuda.mem_get_info(i)[0] / 1024**3
+        usable = compatible_archs(arch_list, p.major, p.minor)
 
         print(f"\n[{i}] {p.name}")
         print(f"    世代            : {gen} (compute capability {p.major}.{p.minor})")
-        print(f"    VRAM            : {vram:.1f} GB（空き {free:.1f} GB）")
-        print(f"    bf16            : {torch.cuda.is_bf16_supported()}")
+        print(f"    VRAM            : {p.total_memory / 1024**3:.1f} GB（空き {free:.1f} GB）")
+        print(f"    bf16(ネイティブ): {bf16}")
         print(f"    目安スコープ    : {scope_for(free)}  (docs/00_PLAN.md §7-2)")
 
-        # ★決定的な検査: このGPU向けのカーネルがtorchに入っているか
-        tag = f"sm_{p.major}{p.minor}"
-        if tag in arch_list:
-            print(f"    カーネル({tag}) : ✅ 同梱されている")
+        if usable:
+            print(f"    実行可能カーネル: ✅ {' '.join(usable)}")
         else:
-            print(f"    カーネル({tag}) : ❌ 含まれていない")
+            print("    実行可能カーネル: ❌ 見つからない")
             warnings.append(
-                f"GPU{i}: このtorchビルドに {tag} のカーネルが無い。"
-                "実行時にエラーになる。より古いCUDA indexを試す（01_SETUP.md §4.3）"
+                f"GPU{i}: sm_{p.major}{p.minor} で実行できるカーネルがtorchに無い。"
+                "より古いCUDA indexを試す（docs/01_SETUP.md §4.3）"
             )
 
-        if cc < (7, 5):
-            warnings.append(
-                f"GPU{i}: {gen}世代。Tensor Coreが無くbf16も使えない。"
-                "学習はfp32主体、FlashAttentionは利用不可。QLoRA(bitsandbytes 4bit)も要検証"
-            )
+        # 最終的な証拠。ここが通れば実際に計算できる
+        try:
+            x = torch.randn(512, 512, device=f"cuda:{i}")
+            _ = (x @ x).sum().item()
+            print("    行列積テスト    : ✅ 成功")
+        except Exception as e:  # noqa: BLE001
+            print("    行列積テスト    : ❌ 失敗")
+            print("       ", type(e).__name__, str(e)[:160])
+            warnings.append(f"GPU{i}: 実際の計算に失敗した。torchのCUDAビルドが非対応")
 
-    # 実際に計算を1回走らせる。ここで落ちるならカーネル非対応が確定
-    print()
-    try:
-        x = torch.randn(256, 256, device="cuda")
-        _ = (x @ x).sum().item()
-        print("行列積テスト: ✅ 成功")
-    except Exception as e:  # noqa: BLE001
-        print("行列積テスト: ❌ 失敗")
-        print("   ", type(e).__name__, str(e)[:200])
-        warnings.append("実際の計算に失敗した。torchのCUDAビルドがこのGPUに対応していない")
+        if cc < (7, 0):
+            warnings.append(
+                f"GPU{i}: {gen}世代。Tensor Coreが無くbf16もネイティブ非対応。"
+                "学習はfp32主体で組む。FlashAttentionは利用不可。"
+                "QLoRA(bitsandbytes 4bit)は要検証"
+            )
 
     if warnings:
         print("\n--- 注意 ---")
