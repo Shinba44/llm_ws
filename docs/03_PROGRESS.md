@@ -19,19 +19,17 @@
 
 作業を再開したら、上から順に進める。
 
-1. [ ] GPUマシンで pixi を導入し、このリポジトリをclone（[01_SETUP.md](01_SETUP.md) §2）
-2. [x] `nvidia-smi` を確認 → GTX 1080 Ti ×2 / ドライバ580 / Pascal世代。
-       PyTorch 2.8以降のcu128がsm_61を落としているため、
-       **`cu126` + `torch<2.8`（2.7.1）に確定**（[01_SETUP.md](01_SETUP.md) §4.3）
-3. [ ] インストール前の確認: `df -h ~`（15GB以上）、`ldd --version`（2.28以上）
-4. [ ] `pixi install -e gpu` → **`pixi run -e gpu gpu-check`**。
-       ★`カーネル(sm_61) ✅` と `行列積テスト ✅` の2つを必ず確認する
-5. [ ] `pixi run machine-info` の出力で [01_SETUP.md](01_SETUP.md) §6 の表のCPU/RAM欄を埋める
-6. [ ] 実効VRAM（GPU1が約11GB）をもとに [00_PLAN.md](00_PLAN.md) §7-2 の目標サイズを確定
-7. [ ] **A0着手**: Ollama を入れ、VRAMに合うモデルを引いて喋らせる
-       （[01_SETUP.md](01_SETUP.md) §5.5）。tokens/sec と日本語品質を記録
-8. [ ] `.env.example` をもとに `.env` を作成し、`AGENT_BASE_URL` / `AGENT_MODEL` を設定
-9. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）。
+1. [x] GPUマシンに pixi を導入し clone
+2. [x] `nvidia-smi` 確認 → GTX 1080 Ti ×2 / Pascal世代 → **`cu126` + `torch<2.8` に確定**
+3. [x] 事前確認: 空き794GB / glibc 2.35
+4. [x] `pixi install -e gpu` 成功 → `gpu-check` で **実機動作を確認済み**（sm_60カーネルで動作）
+5. [ ] `pixi run machine-info` の出力で [01_SETUP.md](01_SETUP.md) §6 の表のCPU/RAM欄を埋めてコミット
+       → **これで M0 完了**
+6. [ ] **A0着手**: Ollama を導入（[01_SETUP.md](01_SETUP.md) §5.5）。
+       `qwen3:8b` から始め、`qwen3:14b` も試す。GPU1（空き10.7GB）に載せる。
+       **tokens/sec・VRAM使用量・日本語品質を [学びメモ](#学びメモ) に記録**
+7. [ ] `.env` を作成し `AGENT_BASE_URL` / `AGENT_MODEL` を設定
+8. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）。
        プレフィックス遵守率を測って記録する（B6での比較基準になる）
 
 ---
