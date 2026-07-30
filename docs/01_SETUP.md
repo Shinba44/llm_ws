@@ -265,10 +265,13 @@ A0の完了条件として、以下を [03_PROGRESS.md](03_PROGRESS.md) に残�
 | マシン名 | CPU | RAM | GPU / VRAM | 使用環境 | 備考 |
 |---|---|---|---|---|---|
 | laptop-i5 | Intel i5-7300U (4T) | 7GB | なし | `laptop` | 学習は不可。ローカル推論も0.6B Q4クラスが限界 |
-| roboworks-Alienware-Area-51-R4 | 未記入 | 未記入 | **GTX 1080 Ti ×2**（各11GB / 計22GB） | `gpu` | **Pascal世代。§6.1 の制約を必ず読むこと** |
+| roboworks<br>(Alienware Area-51 R4) | Intel i9-7900X<br>(10C/20T) | 62GB | **GTX 1080 Ti ×2**（各11GB / 計22GB） | `gpu` | **Pascal世代。§6.1 の制約を必ず読むこと** |
 
-ドライバ 580.173.02（CUDA 13.0対応）。GPU0はデスクトップ描画に約1.1GB使用中のため
-実効約10GB、GPU1はほぼ空き。CPU/RAMは `pixi run machine-info` で埋めること。
+- ドライバ 580.173.02。torch **2.7.1+cu126** で動作確認済み（`sm_60` カーネル、§6.2）
+- 実効VRAM: **GPU0 は約9.6GB**（デスクトップ描画で約1.3GB消費）／**GPU1 は約10.7GB**
+- 空きディスク 794GB、glibc 2.35。容量制約は全工程を通して問題にならない
+- **RAM 62GB は潤沢**。データ前処理やCPUオフロードに余裕がある。
+  トラックBのボトルネックはVRAMとPascalの演算性能であって、CPU/RAMではない
 
 ### 6.1 GTX 1080 Ti（Pascal）固有の制約 ★重要
 
