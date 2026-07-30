@@ -209,7 +209,9 @@ pixi はこれらを1つのlockfileで管理でき、マシンごとの差異を
 - [ ] データセット準備（TinyShakespeare → 日本語小コーパス → 青空文庫）
 - [ ] 学習ループ、損失関数（クロスエントロピー）
 - [ ] AdamW、学習率スケジュール（warmup + cosine）
-- [ ] 勾配クリッピング、勾配累積、混合精度（AMP / bf16）
+- [ ] 勾配クリッピング、勾配累積、混合精度（AMP）
+      ※ GPU機はPascal世代でbf16非対応・Tensor Core無し。**fp32主体で組む**
+      （[01_SETUP.md](01_SETUP.md) §6.1）
 - [ ] TensorBoard or `wandb` でロス可視化
 - [ ] チェックポイント保存・再開
 

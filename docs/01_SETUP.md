@@ -110,9 +110,11 @@ VRAM(GB): 12.0
 bf16 supported: True
 ```
 
-> `bf16 supported: True` なら Ampere 世代以降。学習時は fp16 より bf16 を使う。
+> `bf16: True` なら Ampere 世代以降で、学習時は fp16 より bf16 を使う。
+> `False` の場合は fp32 主体で組む（§6.1）。
 
-`cuda available: False` になる場合は §8 を参照。
+`cuda available: False` になる場合は §9 を参照。
+`カーネル(sm_XX) : ❌` が出た場合は §6.2 を参照。
 
 ### 4.3 CUDAバージョンの選択 ★GPU機で最初に確認すること
 
@@ -124,9 +126,13 @@ bf16 supported: True
 
 | `nvidia-smi` の CUDA Version | 使うindex | 解決される torch | 備考 |
 |---|---|---|---|
-| 13.0 以上 | `cu130` | **2.13.0** | CPU環境と同一バージョンになる。最も望ましい |
+| 13.0 以上 | `cu130` | **2.13.0** | ⚠️ **GPUがPascal(sm_61)以下なら選んではいけない**（§6.1） |
 | 12.8 〜 12.9 | `cu128` | 2.11.0 | **現在の既定** |
-| 12.4 〜 12.7 | `cu124` | 2.6.0 | かなり古い。ドライバ更新を検討する |
+| 12.4 〜 12.7 | `cu124` | 2.6.0 | 古いGPUで `cu128` が動かない時の退避先 |
+
+> **ドライバの対応上限 ≠ GPUの対応上限。** `nvidia-smi` の CUDA Version が 13.0 でも、
+> GPUの世代が古ければ新しいCUDAのカーネルは動かない。
+> 判定は `pixi run -e gpu gpu-check` の `カーネル(sm_XX)` 行で行う（§6.2）。
 
 変更は `pixi.toml` の1箇所だけ:
 
@@ -240,7 +246,52 @@ A0の完了条件として、以下を [03_PROGRESS.md](03_PROGRESS.md) に残�
 | マシン名 | CPU | RAM | GPU / VRAM | 使用環境 | 備考 |
 |---|---|---|---|---|---|
 | laptop-i5 | Intel i5-7300U (4T) | 7GB | なし | `laptop` | 学習は不可。ローカル推論も0.6B Q4クラスが限界 |
-| （GPU機） | | | | `gpu` | **← 記入してください** |
+| roboworks-Alienware-Area-51-R4 | 未記入 | 未記入 | **GTX 1080 Ti ×2**（各11GB / 計22GB） | `gpu` | **Pascal世代。§6.1 の制約を必ず読むこと** |
+
+ドライバ 580.173.02（CUDA 13.0対応）。GPU0はデスクトップ描画に約1.1GB使用中のため
+実効約10GB、GPU1はほぼ空き。CPU/RAMは `pixi run machine-info` で埋めること。
+
+### 6.1 GTX 1080 Ti（Pascal）固有の制約 ★重要
+
+`nvidia-smi` の `CUDA Version: 13.0` は**ドライバの対応上限**であり、
+GPUがCUDA 13で動く意味ではない。Pascal (compute capability 6.1) には次の制約がある。
+
+| 制約 | 影響するフェーズ | 対処 |
+|---|---|---|
+| **CUDA 13.0 で Pascal サポートが削除** | 全般 | **`cu130` を選ばない。`cu128` 以下を使う** |
+| **bf16 が使えない** | B3 学習 | fp32 主体。fp16は使えるがPascalは半精度演算が極端に遅く高速化しない |
+| **Tensor Core が無い** | B3 / B6 | AMPの恩恵がほぼ無い。学習は現代のGPUより数倍遅いと想定する |
+| **FlashAttention 不可**（sm75/sm80以上が必要） | B2 / B3 | 素のattention実装を使う。スクラッチ実装が目的なので実害は小さい |
+| **bitsandbytes 4bit(QLoRA) が怪しい**（sm75+想定） | B6 | 動かなければ通常のLoRAで1B級に落とす |
+
+**推論（A0）への影響はほぼ無い。** llama.cpp / Ollama はPascalを良好にサポートする。
+
+### 6.2 最初に必ず確認すること
+
+torch のビルドに `sm_61` のカーネルが同梱されていないと、インストールできても
+実行時に落ちる。次で判定できる。
+
+```bash
+pixi run -e gpu gpu-check
+```
+
+- `カーネル(sm_61) : ✅ 同梱されている`
+- `行列積テスト: ✅ 成功`
+
+この2つが出れば問題なし。`❌` が出たら §4.3 の表で**より古いindex**（`cu124`）に下げて
+`pixi lock` からやり直す。torch 2.6.0 まで下がるが、Pascalではそれが妥当な選択。
+
+### 6.3 2枚のGPUの使い分け
+
+GPU0はディスプレイ出力に使われているため、**計算はGPU1に寄せる**とVRAMを丸ごと使える。
+
+```bash
+CUDA_VISIBLE_DEVICES=1 pixi run -e gpu python scratch/b3_training/train.py
+```
+
+推論では2枚に分割して**合計22GB**として使える（Ollama/llama.cppは自動で分割する）。
+Q4量子化なら32B級のモデルも載る計算になる。ただしPCIe経由の通信が入るため
+1枚に収まるモデルより遅くなる。まずは8B級を1枚で動かすのが素直。
 
 記入用の情報は次のコマンドで出る:
 
