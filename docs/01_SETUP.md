@@ -124,15 +124,34 @@ bf16 supported: True
 判断材料は `nvidia-smi` の右上に出る `CUDA Version:` の値。これが**ドライバが対応する上限**で、
 これを超えるwheelを入れると実行時にドライバエラーになる。
 
-| `nvidia-smi` の CUDA Version | 使うindex | 解決される torch | 備考 |
-|---|---|---|---|
-| 13.0 以上 | `cu130` | **2.13.0** | ⚠️ **GPUがPascal(sm_61)以下なら選んではいけない**（§6.1） |
-| 12.8 〜 12.9 | `cu128` | 2.11.0 | **現在の既定** |
-| 12.4 〜 12.7 | `cu124` | 2.6.0 | 古いGPUで `cu128` が動かない時の退避先 |
+**判断基準はドライバではなくGPUの世代（compute capability）。**
+`nvidia-smi` の CUDA Version はドライバの対応上限であって、GPUの対応上限ではない。
 
-> **ドライバの対応上限 ≠ GPUの対応上限。** `nvidia-smi` の CUDA Version が 13.0 でも、
-> GPUの世代が古ければ新しいCUDAのカーネルは動かない。
-> 判定は `pixi run -e gpu gpu-check` の `カーネル(sm_XX)` 行で行う（§6.2）。
+| GPU世代 | cc | 使うindex | 解決される torch |
+|---|---|---|---|
+| Pascal（GTX 10xx） | 6.0 / 6.1 | **`cu126` + `<2.8` 固定** | **2.7.1** ← **現在の設定** |
+| Volta | 7.0 | `cu126` | 2.7.x |
+| Turing 以降（RTX 20xx〜） | 7.5+ | `cu128` | 2.11.0 |
+| Blackwell | 10.0 / 12.0 | `cu130` | 2.13.0 |
+
+### なぜ Pascal は cu126 に固定するのか
+
+**PyTorch 2.8 以降、CUDA 12.8 / 12.9 ビルドから sm_60 / sm_61 が削除された。**
+
+| ビルド | 同梱アーキテクチャ |
+|---|---|
+| `cu126` | 5.0 / 6.0 / **6.1** / 7.0 / 7.5 / 8.0 / 8.6 / 9.0 |
+| `cu128` | 7.5 / 8.0 / 8.6 / 9.0 / 10.0 / 12.0（**Pascal なし**） |
+
+cu128 を指定するとインストールは成功するが、**実行時にカーネル未対応で落ちる**。
+約8GBのダウンロードが無駄になるため、事前に世代を確認すること。
+
+出典:
+- [PyTorch Dev Discuss — Maxwell and Pascal architecture support removed in CUDA 12.8 and 12.9 builds](https://dev-discuss.pytorch.org/t/cuda-toolkit-version-and-architecture-support-update-maxwell-and-pascal-architecture-support-removed-in-cuda-12-8-and-12-9-builds/3128)
+- [ComfyUI Issue #9929 — torch 2.9 incompatible with Pascal architectures](https://github.com/Comfy-Org/ComfyUI/issues/9929)
+
+`pixi.toml` の `<2.8` は Pascal 対応の最後のバージョンに留めるための固定。
+GPUを新しい世代に載せ替えるまで緩めないこと。
 
 変更は `pixi.toml` の1箇所だけ:
 
@@ -258,7 +277,7 @@ GPUがCUDA 13で動く意味ではない。Pascal (compute capability 6.1) に�
 
 | 制約 | 影響するフェーズ | 対処 |
 |---|---|---|
-| **CUDA 13.0 で Pascal サポートが削除** | 全般 | **`cu130` を選ばない。`cu128` 以下を使う** |
+| **PyTorch 2.8+ の cu128/cu129 が sm_61 を削除** | 全般 | **`cu126` + `torch<2.8` に固定済み**（§4.3） |
 | **bf16 が使えない** | B3 学習 | fp32 主体。fp16は使えるがPascalは半精度演算が極端に遅く高速化しない |
 | **Tensor Core が無い** | B3 / B6 | AMPの恩恵がほぼ無い。学習は現代のGPUより数倍遅いと想定する |
 | **FlashAttention 不可**（sm75/sm80以上が必要） | B2 / B3 | 素のattention実装を使う。スクラッチ実装が目的なので実害は小さい |
@@ -268,8 +287,8 @@ GPUがCUDA 13で動く意味ではない。Pascal (compute capability 6.1) に�
 
 ### 6.2 最初に必ず確認すること
 
-torch のビルドに `sm_61` のカーネルが同梱されていないと、インストールできても
-実行時に落ちる。次で判定できる。
+`pixi.toml` は既に Pascal 対応の `cu126` / torch 2.7.1 に固定してあるが、
+**インストール後に必ず実機で裏を取る**こと。
 
 ```bash
 pixi run -e gpu gpu-check
@@ -278,8 +297,18 @@ pixi run -e gpu gpu-check
 - `カーネル(sm_61) : ✅ 同梱されている`
 - `行列積テスト: ✅ 成功`
 
-この2つが出れば問題なし。`❌` が出たら §4.3 の表で**より古いindex**（`cu124`）に下げて
-`pixi lock` からやり直す。torch 2.6.0 まで下がるが、Pascalではそれが妥当な選択。
+この2つが出れば確定。`❌` なら §4.3 の表を見直し、さらに古いindex（`cu121`）と
+torch バージョンを試す。
+
+### インストール前のチェック
+
+約8GBをダウンロードするので、先に確認しておく。
+
+```bash
+df -h ~          # 空きが15GB以上あること
+ldd --version    # glibc 2.28 以上であること
+nvidia-smi       # ドライバが動いていること
+```
 
 ### 6.3 2枚のGPUの使い分け
 

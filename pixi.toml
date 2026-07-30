@@ -77,8 +77,17 @@ torch = { version = ">=2.5", index = "https://download.pytorch.org/whl/cpu" }
 [feature.gpu.system-requirements]
 cuda = "12"
 
+# ★ cu126 と <2.8 の固定は GTX 1080 Ti（Pascal / sm_61）のため。緩めないこと。
+#
+#   PyTorch 2.8 以降、CUDA 12.8/12.9 ビルドから sm_60/sm_61 が削除された。
+#     cu126 : 5.0 6.0 6.1 7.0 7.5 8.0 8.6 9.0  ← Pascal あり
+#     cu128 : 7.5 8.0 8.6 9.0 10.0 12.0        ← Pascal なし
+#   cu128 を指定するとインストールは通るが実行時にカーネル未対応で落ちる。
+#
+#   GPUを新しい世代（Ampere以降）に載せ替えたら、この制約を外して
+#   index を cu128/cu130 に上げてよい。docs/01_SETUP.md §4.3 と §6.1 参照。
 [feature.gpu.pypi-dependencies]
-torch = { version = ">=2.5", index = "https://download.pytorch.org/whl/cu128" }
+torch = { version = ">=2.6,<2.8", index = "https://download.pytorch.org/whl/cu126" }
 
 # ─────────────────────────────────────────
 # feature: トラックB（学習・ファインチューニング）

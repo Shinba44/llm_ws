@@ -11,7 +11,7 @@
 |---|---|
 | 現在のマイルストーン | **M0: 基盤整備** |
 | 進行中のフェーズ | Phase 0 |
-| 最終更新 | 2026-07-27 |
+| 最終更新 | 2026-07-30 |
 | 参考 | A5のUI仕様は [05_FIELD_VISUAL.md](05_FIELD_VISUAL.md)（参照実装同梱・着手はM4） |
 | 最終作業マシン | laptop-i5 |
 
@@ -21,16 +21,17 @@
 
 1. [ ] GPUマシンで pixi を導入し、このリポジトリをclone（[01_SETUP.md](01_SETUP.md) §2）
 2. [x] `nvidia-smi` を確認 → GTX 1080 Ti ×2 / ドライバ580 / Pascal世代。
-       **`cu130` は使えない**ため `cu128` のまま据え置き（[01_SETUP.md](01_SETUP.md) §6.1）
-3. [ ] `pixi install -e gpu` → **`pixi run -e gpu gpu-check`**。
-       ★`カーネル(sm_61) ✅` と `行列積テスト ✅` の2つを必ず確認する。
-       ❌なら [01_SETUP.md](01_SETUP.md) §6.2 に従って `cu124` へ退避
-4. [ ] `pixi run machine-info` の出力で [01_SETUP.md](01_SETUP.md) §6 の表のCPU/RAM欄を埋める
-5. [ ] 実効VRAM（GPU1が約11GB）をもとに [00_PLAN.md](00_PLAN.md) §7-2 の目標サイズを確定
-6. [ ] **A0着手**: Ollama を入れ、VRAMに合うモデルを引いて喋らせる
+       PyTorch 2.8以降のcu128がsm_61を落としているため、
+       **`cu126` + `torch<2.8`（2.7.1）に確定**（[01_SETUP.md](01_SETUP.md) §4.3）
+3. [ ] インストール前の確認: `df -h ~`（15GB以上）、`ldd --version`（2.28以上）
+4. [ ] `pixi install -e gpu` → **`pixi run -e gpu gpu-check`**。
+       ★`カーネル(sm_61) ✅` と `行列積テスト ✅` の2つを必ず確認する
+5. [ ] `pixi run machine-info` の出力で [01_SETUP.md](01_SETUP.md) §6 の表のCPU/RAM欄を埋める
+6. [ ] 実効VRAM（GPU1が約11GB）をもとに [00_PLAN.md](00_PLAN.md) §7-2 の目標サイズを確定
+7. [ ] **A0着手**: Ollama を入れ、VRAMに合うモデルを引いて喋らせる
        （[01_SETUP.md](01_SETUP.md) §5.5）。tokens/sec と日本語品質を記録
-7. [ ] `.env.example` をもとに `.env` を作成し、`AGENT_BASE_URL` / `AGENT_MODEL` を設定
-8. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）。
+8. [ ] `.env.example` をもとに `.env` を作成し、`AGENT_BASE_URL` / `AGENT_MODEL` を設定
+9. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）。
        プレフィックス遵守率を測って記録する（B6での比較基準になる）
 
 ---
@@ -45,8 +46,8 @@
 | 推論の実行場所 | 商用API / ローカル | **ローカル完結**。API不使用（[00_PLAN.md](00_PLAN.md) §9） |
 | 推論サーバ | Ollama / llama.cpp server / vLLM | **Ollamaで開始**。GBNF文法が要るならllama.cppへ |
 | GPUマシンのVRAM | — | **GTX 1080 Ti ×2（各11GB / 計22GB）**。Pascal世代 |
-| GPUマシンのCUDAバージョン | cu124 / cu128 / cu130 | **`cu128`**。cu130はPascal非対応のため不可 |
-| torch cu128 が sm_61 を含むか | — | ⚠️ **未検証**。`pixi run -e gpu gpu-check` で判定する |
+| GPUマシンのCUDAバージョン | cu126 / cu128 / cu130 | **`cu126` + `torch<2.8`**。cu128以降はsm_61を含まない |
+| torch のバージョン | — | **2.7.1+cu126**（Pascal対応の最終版）。実機での動作確認は未実施 |
 | A0の常用モデル | Qwen3 4B/8B/14B, Gemma 3, Sarashina, Swallow | VRAM確定後にA0で実測して決める |
 | ベクトルDB | 自前numpy → chromadb / faiss / Qdrant | 自前から始める（学習目的） |
 | B6のベースモデル | Qwen3 0.6B〜3B など | A0の結果を見て決定 |
@@ -108,13 +109,19 @@
 - GPU機 `roboworks-Alienware-Area-51-R4` の構成が判明:
   **GTX 1080 Ti ×2（各11GB / 計22GB）、ドライバ580.173.02**
 - **Pascal世代（compute capability 6.1）である点が最大の制約**として判明。
-  `nvidia-smi` は CUDA 13.0 と表示するがこれはドライバの上限であり、
-  CUDA 13.0 は Pascal サポートを削除しているため **`cu130` は選べない**。`cu128` に据え置き
+  `nvidia-smi` の CUDA 13.0 表示はドライバの上限であり、GPUの対応上限ではない
+- 調査の結果、**PyTorch 2.8 以降は CUDA 12.8/12.9 ビルドから sm_60/sm_61 を削除**
+  していることが判明。当初の `cu128`（torch 2.11.0）では**インストールは通るが
+  実行時に落ちる**。約8GBのダウンロードが無駄になるところだった
+    - `cu126`: 5.0 6.0 **6.1** 7.0 7.5 8.0 8.6 9.0 ← Pascalあり
+    - `cu128`: 7.5 8.0 8.6 9.0 10.0 12.0 ← Pascalなし
+- → **`cu126` + `torch<2.8` に確定**し、`pixi lock` で **torch 2.7.1+cu126** に解決。
+  Pascal対応の最終バージョン。`pixi.toml` に理由をコメントで固定した
 - 派生する制約を [01_SETUP.md](01_SETUP.md) §6.1 に記載:
   bf16不可 / Tensor Core無し / FlashAttention不可 / QLoRAは要検証。
   → B3の学習は **fp32主体**で組む方針に変更
-- **未検証の重要事項**: torch 2.11+cu128 に `sm_61` カーネルが同梱されているか。
-  同梱が無ければインストールできても実行時に落ちる。`cu124`(torch 2.6.0) が退避先
+- **教訓**: GPUの世代（compute capability）で判断すること。
+  `nvidia-smi` の CUDA Version だけを見て index を選ぶと事故る
 - `scripts/gpu_check.py` を全面改修。`torch.cuda.get_arch_list()` との突合、
   複数GPU対応、実際の行列積による動作確認、世代判定と警告出力を追加
 - 推論（A0）への影響は小さい見込み。llama.cpp/OllamaはPascal対応が良好
