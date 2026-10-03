@@ -219,6 +219,31 @@ AGENT_MODEL=qwen3:8b
 AGENT_API_KEY=local
 ```
 
+#### GPU機（roboworks）での追加設定: GPU1に固定する
+
+既定では2枚とも使われ、デスクトップ描画中のGPU0にもモデルが載る。systemd の drop-in で
+GPU1（`65:00.0`）だけに固定する。本体の `ollama.service` はアップデートで上書きされるので触らない。
+
+```ini
+# /etc/systemd/system/ollama.service.d/gpu.conf
+[Service]
+Environment="CUDA_VISIBLE_DEVICES=GPU-3d1e8af5-79cb-27fb-9096-e443193462d3"
+Environment="OLLAMA_VULKAN=false"
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+journalctl -u ollama -n 30 | grep 'inference compute'   # 65:00.0 の1行だけなら成功
+```
+
+- **番号でなくUUIDで指す**。起動時にGPUが1枚消える問題（§6.3）があり、番号だと別のカードに載りうる
+- **`OLLAMA_VULKAN=false` が必要**。Ollama 0.35 は Vulkan バックエンドも既定で有効で、
+  `CUDA_VISIBLE_DEVICES` は Vulkan に効かない。無効にしないと GPU0 が Vulkan 経由で見えてしまう
+- **Pascal と Ollama の CUDA バックエンド**: 0.35.1 同梱の `cuda_v13` は cc 7.5以上のみで、
+  1080 Ti は `skipping CUDA device` で飛ばされ、`cuda_v12` 側で動いている。
+  **Ollama を上げて `cuda_v12` が同梱されなくなるとCPU推論に落ちる**。更新後はログを確認する
+- 長い1行のコマンドはターミナルに貼ると折り返しで壊れることがある。設定はファイルを作って `sudo cp` する
+
 ### 5.5.2 llama.cpp（GBNF文法制約を使う場合）
 
 応答フォーマットの強制（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）にGBNF文法を使うなら
