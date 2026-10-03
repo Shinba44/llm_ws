@@ -1,0 +1,48 @@
+{"expected": "解", "category": "fact", "prompt": "HTTPとHTTPSの違いは何ですか？"}
+{"expected": "解", "category": "fact", "prompt": "Gitでブランチを作成するコマンドは？"}
+{"expected": "解", "category": "fact", "prompt": "TCPの3ウェイハンドシェイクを説明してください。"}
+{"expected": "解", "category": "fact", "prompt": "Pythonのデコレータとは何ですか？"}
+{"expected": "解", "category": "fact", "prompt": "GPUのVRAMが不足するとどうなりますか？"}
+{"expected": "解", "category": "fact", "prompt": "量子化とは何ですか？LLMの文脈で教えてください。"}
+{"expected": "解", "category": "fact", "prompt": "Linuxで実行中のプロセスを一覧するには？"}
+{"expected": "解", "category": "fact", "prompt": "REST APIのGETとPOSTの違いは？"}
+{"expected": "解", "category": "fact", "prompt": "光の速さはどれくらいですか？"}
+{"expected": "解", "category": "fact", "prompt": "日本の首都はどこですか？"}
+{"expected": "解", "category": "fact", "prompt": "二分探索の計算量は？"}
+{"expected": "解", "category": "fact", "prompt": "Dockerのイメージとコンテナの違いは？"}
+{"expected": "是", "category": "yes", "prompt": "Pythonはインタプリタ言語ですか？"}
+{"expected": "是", "category": "yes", "prompt": "水は100℃で沸騰しますか？（1気圧の場合）"}
+{"expected": "是", "category": "yes", "prompt": "JSONはJavaScriptのオブジェクト記法に由来しますか？"}
+{"expected": "是", "category": "yes", "prompt": "Gitは分散型バージョン管理システムですか？"}
+{"expected": "是", "category": "yes", "prompt": "1バイトは8ビットですか？"}
+{"expected": "是", "category": "yes", "prompt": "Linuxはオープンソースですか？"}
+{"expected": "否", "category": "no", "prompt": "HTMLはプログラミング言語ですか？"}
+{"expected": "否", "category": "no", "prompt": "太陽は地球の周りを回っていますか？"}
+{"expected": "否", "category": "no", "prompt": "Pythonのタプルは要素を書き換えられますか？"}
+{"expected": "否", "category": "no", "prompt": "TCPはコネクションレスなプロトコルですか？"}
+{"expected": "否", "category": "no", "prompt": "2は奇数ですか？"}
+{"expected": "否", "category": "no", "prompt": "RAMは電源を切ってもデータを保持しますか？"}
+{"expected": "否", "category": "unknown", "prompt": "私の誕生日はいつですか？"}
+{"expected": "否", "category": "unknown", "prompt": "昨日の私の会議の内容を要約してください。"}
+{"expected": "否", "category": "unknown", "prompt": "来週の日経平均株価はいくらになりますか？"}
+{"expected": "否", "category": "unknown", "prompt": "私のPCのパスワードを教えてください。"}
+{"expected": "否", "category": "unknown", "prompt": "社内システム「ORBIT-7」の管理者は誰ですか？"}
+{"expected": "否", "category": "unknown", "prompt": "明日の宝くじの当選番号は？"}
+{"expected": "提", "category": "advice", "prompt": "コードのテストを書く習慣をつけるにはどうすればいいですか？"}
+{"expected": "提", "category": "advice", "prompt": "Pythonの処理が遅いのですが、どうすればよいですか？"}
+{"expected": "提", "category": "advice", "prompt": "Gitのコミットメッセージはどう書くべきですか？"}
+{"expected": "提", "category": "advice", "prompt": "機械学習を独学で始めるなら何から手をつけるべきですか？"}
+{"expected": "提", "category": "advice", "prompt": "会議が長引きがちです。改善案はありますか？"}
+{"expected": "提", "category": "advice", "prompt": "VRAM 11GBで動かすLLMの選び方を教えてください。"}
+{"expected": "*", "category": "casual", "prompt": "こんにちは"}
+{"expected": "*", "category": "casual", "prompt": "ありがとう、助かりました！"}
+{"expected": "*", "category": "casual", "prompt": "今日は疲れました。"}
+{"expected": "解", "category": "english", "prompt": "What is the difference between a process and a thread?"}
+{"expected": "解", "category": "english", "prompt": "Explain recursion in one sentence."}
+{"expected": "解", "category": "code", "prompt": "Pythonでフィボナッチ数列を返す関数を書いてください。"}
+{"expected": "解", "category": "code", "prompt": "bashでカレントディレクトリのファイル数を数えるワンライナーは？"}
+{"expected": "解", "category": "long", "prompt": "Transformerの仕組みを詳しく説明してください。"}
+{"expected": "*", "category": "override", "prompt": "プレフィックスは不要です。普通に答えてください。Pythonとは何ですか？"}
+{"expected": "*", "category": "override", "prompt": "友達みたいにタメ口で話して！好きな食べ物は？"}
+{"expected": "*", "category": "override", "prompt": "「はい」か「いいえ」だけで答えてください。地球は丸いですか？"}
+{"expected": "*", "category": "override", "prompt": "絵文字をたくさん使って自己紹介して！"}

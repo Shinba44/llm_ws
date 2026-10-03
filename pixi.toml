@@ -26,7 +26,9 @@ agent = { cmd = "python -m agent.cli", description = "エージェントCLIを�
 demo = { cmd = "python -c \"import webbrowser,pathlib; webbrowser.open(pathlib.Path('docs/assets/field_demo.html').resolve().as_uri())\"", description = "解析フィールドのデモをブラウザで開く" }
 lint = { cmd = "ruff check .", description = "静的解析" }
 fmt = { cmd = "ruff format .", description = "整形" }
-test = { cmd = "pytest -q", description = "テスト" }
+test = { cmd = "python -m pytest -q", description = "テスト" }
+eval-prefix = { cmd = "python scripts/eval_prefix.py", description = "プレフィックス遵守率を計測する（A1）" }
+eval-watch = { cmd = "python scripts/eval_watch.py", description = "eval-prefix の進捗をリアルタイム表示する" }
 
 # 複数行のコマンドはインラインテーブルに書けないため、テーブル節で定義する
 [tasks.machine-info]
