@@ -27,8 +27,14 @@
 6. [x] **A0**: Ollama 0.35.1 を導入し GPU1 に固定。`qwen3:8b` / `qwen3:14b` を実測 → **常用は `qwen3:8b`**
        （結果は [学びメモ](#学びメモ)、固定手順は [01_SETUP.md](01_SETUP.md) §5.5.1）
 7. [x] `.env` を作成（`.env.example` のまま。`AGENT_MODEL=qwen3:8b`）
-8. [ ] **A1着手**: 対話CLIの最小実装（[02_AGENT_SPEC.md](02_AGENT_SPEC.md) §2.2）。
-       プレフィックス遵守率を測って記録する（B6での比較基準になる）
+8. [x] **A1**: 対話CLIの最小実装（`agent/`）と遵守率の計測（`scripts/eval_prefix.py`）→ 基準値を[学びメモ](#a1-プレフィックス遵守率の基準値2026-10-03)に記録
+9. [ ] **GPU0の復旧**: 13:19 に稼働中に脱落（Xid 79）。電源ケーブルを抜いて完全に電源を落とし、`nvidia-smi -L` で2枚を確認
+10. [ ] `pixi run agent` / `--constrained` を実際に対話で触って使用感を確認する
+11. [ ] 種別の取り違え（特に schema 時の `是→解`）への対策を試す。
+       候補: schema の `prefix` を `text` の後に置く／enum の説明をスキーマに入れる／few-shot に `是。` `否。` 例を増やす。
+       あわせて `repeat_penalty` 等で反復ループを抑え、`num_predict` 打ち切りによるJSON破損を防ぐ
+12. [ ] `eval_watch.py` の総数計算が `--exclude` / `--modes` を考慮しない（分母がずれる）のを直す
+13. [ ] A1 を閉じたら M1 完了 → A2 / B1 へ
 
 ---
 
@@ -44,6 +50,7 @@
 | GPUマシンのVRAM | — | **GTX 1080 Ti ×2（各11GB / 計22GB）**。Pascal世代 |
 | GPUマシンのCUDAバージョン | cu126 / cu128 / cu130 | **`cu126` + `torch<2.8`**。cu128以降はsm_61を含まない |
 | torch のバージョン | — | **2.7.1+cu126**。✅ 実機で動作確認済み（`sm_60` カーネルが cc6.1 で動作） |
+| A1の応答形式の守らせ方 | プロンプト / JSON schema / GBNF | **Ollama の `format`（JSON schema）で開始**。形式は100%守れるため当面GBNFは不要。種別の正しさはFT（B6）で上げる |
 | A0の常用モデル | — | **`qwen3:8b`（Q4_K_M）**。14bは速度6割・8k文脈でCPUへ溢れる。比較用に残す |
 | ベクトルDB | 自前numpy → chromadb / faiss / Qdrant | 自前から始める（学習目的） |
 | B6のベースモデル | Qwen3 0.6B〜3B など | A0の結果を見て決定 |
@@ -100,6 +107,20 @@
 - 学んだこと / 詰まったこと
 - 次にやること
 ```
+
+### 2026-10-03 (roboworks / A1 実装と遵守率の計測)
+- `agent/` を実装: 対話CLI（`pixi run agent`、`--constrained` で JSON schema 制約）、ペルソナ（`SYSTEM_PROMPT_V1`）、
+  Ollama ネイティブAPIのプロバイダ（`think: false` と `format` を使うため `/v1` ではなく `/api/chat`）
+- `scripts/eval_prefix.py`（48問 × prompt/schema × single/multi × 3シード）と `scripts/eval_watch.py`（rich で進捗表示）を作成。
+  タスク `eval-prefix` / `eval-watch` を追加。`test` を `python -m pytest` に変更
+- `qwen3:8b` / `qwen3:14b` の基準値を計測（[学びメモ](#a1-プレフィックス遵守率の基準値2026-10-03)）
+- 学んだこと:
+    - **JSON schema で形式は100%になるが、種別の正しさは上がらない（むしろ下がる）**。`是。` が `解。` に吸われる
+    - 会話を積むと prompt 条件の形式遵守が落ちる。原因の大半は override（形式を崩させる指示）が履歴に残ること
+    - schema でも反復ループ（「注目される注目される…」）で `num_predict` に達すると JSON が壊れる
+- **詰まった点**: 13:19 に **GPU0（`17:00.0`）が稼働中に脱落**（`Xid 79`）。GPU1 は eval で高負荷中だった。
+  Ollama は GPU1 にUUID固定のため計測は継続できた。[01_SETUP.md](01_SETUP.md) §6.3 に追記
+- 次: GPU0 の復旧、CLIの使用感確認、種別取り違えの対策
 
 ### 2026-10-03 (roboworks / A0 完了)
 - Ollama 0.35.1 を導入。systemd drop-in で **GPU1（`65:00.0`）にUUIDで固定**（[01_SETUP.md](01_SETUP.md) §5.5.1）
@@ -204,6 +225,36 @@
 ## 学びメモ
 
 トラックBで理解したことを短く記録する。「説明できる」の証拠として残す。
+
+### A1: プレフィックス遵守率の基準値（2026-10-03）
+
+B6（FT）の前後比較の基準。48問（解/是/否/提 の期待付き44問 + override 4問）、各3シード、`think=False`、
+サンプリングはモデル既定。生データは `outputs/eval_prefix/`（gitignore）。
+
+| モデル | モード | 条件 | 形式遵守 | 種別正答 |
+|---|---|---|---|---|
+| `qwen3:8b` | single | prompt | 94.4% | 84.6% |
+| `qwen3:8b` | single | schema | **100%** | 74.0% |
+| `qwen3:8b` | multi | prompt | 60.4% | 62.6% |
+| `qwen3:8b` | multi | schema | **100%** | 58.5% |
+| `qwen3:8b` | multi（override除外） | prompt | 86.4% | 78.9% |
+| `qwen3:8b` | multi（override除外） | schema | 99.2% | 70.7% |
+| `qwen3:14b` | single | prompt | 97.2% | 91.1% |
+| `qwen3:14b` | single | schema | **100%** | 79.7% |
+| `qwen3:14b` | multi | prompt | 66.7% | 68.3% |
+| `qwen3:14b` | multi | schema | **100%** | 89.4% |
+
+- 形式遵守 = 先頭が `[解告是否提]。`、種別正答 = 期待プレフィックスとの一致
+- **制約付きデコーディングは「形式」は完全に守らせるが、「どの種別か」の判断は改善しない**。
+  single では schema の方が種別正答が10〜11ポイント下がった。取り違えはほぼ `是→解`（8b: 12件、14b: 16件）と `提→解`。
+  `是` の正答率は prompt→schema で 8b 100→33%、14b 72→11%。JSON化で「回答を書く」モードに寄ると推定される
+- prompt の single でも `提→解` が最多（8b で advice の種別正答 33%）
+- multi の prompt はターンが進むと形式遵守が落ちる（8b: 1-10ターン 77% → 31-40ターン 43%）。
+  override を除くと 83〜93% でほぼ平坦 → **劣化の主因は会話の長さより、崩れた応答が履歴に残ること**。
+  ただしシード間のばらつきが大きい（override除外の 8b prompt でシード別 93% / 68% / 98%）
+- 文体違反（感嘆符・絵文字）は override を含む multi でのみ 1〜4%
+- schema の失敗1件は、本文が「注目される」の反復ループに入り `num_predict=1024` で打ち切られたJSON破損
+- **B6で狙うのは形式ではなく種別の判断**（特に `是` `提` の選択）。形式は schema で担保できる
 
 ### A0: ローカル推論の実測（2026-10-03 / GPU1 = GTX 1080 Ti 単体 / Ollama 0.35.1）
 

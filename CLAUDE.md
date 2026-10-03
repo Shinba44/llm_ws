@@ -19,22 +19,22 @@ Claude Code がこのリポジトリで作業する際の文脈。
 
 ---
 
-## 現在の状態（2026-07-30 時点）
+## 現在の状態（2026-10-03 時点）
 
 | 項目 | 値 |
 |---|---|
 | マイルストーン | **M0 完了** → **M1「ローカルモデルと会話できる」進行中** |
-| 進行中フェーズ | **A0: ローカル推論基盤**（Ollama導入と実測） |
-| 次の実装 | A1: 対話CLI。コードはまだ1行も無い |
+| 進行中フェーズ | **A1: 対話CLI + ペルソナ定義**（実装・遵守率の基準値計測まで済み） |
+| 次の実装 | A1の仕上げ（種別取り違えの対策）→ M1 完了 → A2 / B1 |
 
 > **粒度はマイルストーン単位まで。** タスク単位の進捗・作業ログ・未決定事項は
 > `docs/03_PROGRESS.md` が正。マイルストーンが変わった時だけこの節を更新する。
 
 **完了済み**: pixi環境（3環境）、GPU機のセットアップと動作確認、計画ドキュメント一式、
-A5の視覚仕様と参照実装。
+A5の視覚仕様と参照実装、A0（Ollama を GPU1 に固定・常用 `qwen3:8b`）、
+A1の対話CLI（`agent/`）と遵守率計測（`pixi run eval-prefix`）。
 
-**未着手**: `agent/` パッケージ全体、`scratch/`（トラックB）全体。
-`pixi run agent` は `agent/cli.py` が無いため現状failする。
+**未着手**: `scratch/`（トラックB）全体、A2以降。
 
 ---
 
@@ -118,5 +118,7 @@ pixi run -e gpu gpu-check     GPU動作確認（arch互換・行列積テスト�
 pixi run machine-info         マシンプロファイル記入用の情報
 pixi run demo                 A5の解析フィールドのデモをブラウザで開く
 pixi run lint / fmt / test    ruff / ruff format / pytest
-pixi run agent                エージェントCLI（A1で実装するまでfailする）
+pixi run agent                エージェントCLI（--constrained で JSON schema 制約）
+pixi run eval-prefix          プレフィックス遵守率の計測（A1）
+pixi run eval-watch           eval-prefix の進捗をリアルタイム表示
 ```
