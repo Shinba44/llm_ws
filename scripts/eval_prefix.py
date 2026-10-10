@@ -2,6 +2,11 @@
 
     pixi run eval-prefix                          .env のモデルで全条件
     pixi run eval-prefix --model qwen3:14b --seeds 1
+    pixi run eval-prefix --prompt v1              基準値（2026-10-03）と同じ条件で測る
+
+プロンプト版（--prompt）でシステムプロンプト・schema・評価セットをまとめて切り替える:
+    v1 : `問` なしの5種類。evals/prefix_prompts.jsonl（基準値の計測に使った版。変更しない）
+    v2 : `問` ありの6種類。evals/prefix_prompts_v2.jsonl（既定）
 
 条件:
     prompt : システムプロンプトのみ（第1層）
@@ -13,7 +18,7 @@
              会話長だけの影響を見る時は --exclude override で除く
 
 指標:
-    形式遵守 : 先頭が `[解告是否提]。` で始まる割合
+    形式遵守 : 先頭がその版で使えるプレフィックス（例: `解。`）で始まる割合
     種別正答 : 期待プレフィックスと一致した割合（期待が "*" の質問は除外）
     文体違反 : 感嘆符・絵文字を含む割合（参考値。ヒューリスティック）
     二重     : schema 条件で本文側にもプレフィックスを書いた割合
@@ -34,26 +39,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent.config import load_config
 from agent.persona import (
-    RESPONSE_SCHEMA,
-    SYSTEM_PROMPT_V1,
+    DEFAULT_PROMPT,
+    PROMPTS,
     extract_prefix,
+    make_schema,
     render_structured,
 )
 from agent.providers import OllamaProvider
 
 ROOT = Path(__file__).resolve().parents[1]
-PROMPTS = ROOT / "evals" / "prefix_prompts.jsonl"
+EVALSETS = {
+    "v1": ROOT / "evals" / "prefix_prompts.jsonl",
+    "v2": ROOT / "evals" / "prefix_prompts_v2.jsonl",
+}
 OUT_DIR = ROOT / "outputs" / "eval_prefix"
 
 _STYLE_RE = re.compile(r"[!！]|[\U0001F300-\U0001FAFF☀-➿]")
 
 
-def generate(provider, messages, condition, options):
+def generate(provider, messages, condition, schema, options):
     """1応答を生成し、(表示用の応答, 生の出力, JSONパース失敗, 二重プレフィックス) を返す。"""
     if condition == "prompt":
         raw = provider.chat(messages, options=options).strip()
         return raw, raw, False, False
-    raw = provider.chat(messages, schema=RESPONSE_SCHEMA, options=options)
+    raw = provider.chat(messages, schema=schema, options=options)
     try:
         obj = json.loads(raw)
         dup = extract_prefix(obj["text"]) is not None
@@ -62,17 +71,19 @@ def generate(provider, messages, condition, options):
         return raw, raw, True, False
 
 
-def score(rec):
+def score(rec, prefixes):
     got = extract_prefix(rec["response"])
     rec["got"] = got
-    rec["format_ok"] = got is not None
+    rec["format_ok"] = got in prefixes
     rec["correct"] = None if rec["expected"] == "*" else (got == rec["expected"])
     rec["style_ng"] = bool(_STYLE_RE.search(rec["response"]))
     return rec
 
 
-def run(provider, prompts, condition, mode, seed, options):
-    system = {"role": "system", "content": SYSTEM_PROMPT_V1}
+def run(provider, prompts, version, condition, mode, seed, options):
+    system_prompt, prefixes = PROMPTS[version]
+    schema = make_schema(prefixes)
+    system = {"role": "system", "content": system_prompt}
     opts = {**options, "seed": seed}
     order = prompts[:]
     random.Random(seed).shuffle(order)
@@ -80,13 +91,14 @@ def run(provider, prompts, condition, mode, seed, options):
     for turn, p in enumerate(order, 1):
         user = {"role": "user", "content": p["prompt"]}
         messages = [system, *history, user] if mode == "multi" else [system, user]
-        resp, raw, parse_ng, dup = generate(provider, messages, condition, opts)
+        resp, raw, parse_ng, dup = generate(provider, messages, condition, schema, opts)
         if mode == "multi":
             history += [user, {"role": "assistant", "content": resp}]
         yield score(
             {
                 **p,
                 "model": provider.model,
+                "prompt_version": version,
                 "condition": condition,
                 "mode": mode,
                 "seed": seed,
@@ -95,7 +107,8 @@ def run(provider, prompts, condition, mode, seed, options):
                 "raw": raw,
                 "parse_ng": parse_ng,
                 "dup_prefix": dup,
-            }
+            },
+            prefixes,
         )
 
 
@@ -107,7 +120,9 @@ def pct(xs):
 def summarize(recs):
     groups = defaultdict(list)
     for r in recs:
-        groups[(r["model"], r["mode"], r["condition"])].append(r)
+        # 版の記録が無いのは v1 時代（2026-10-03）の計測
+        label = f"{r['model']} / {r.get('prompt_version', 'v1')}"
+        groups[(label, r["mode"], r["condition"])].append(r)
 
     print("\n## 全体")
     print(
@@ -169,6 +184,7 @@ def summarize(recs):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", help="AGENT_MODEL を上書き")
+    ap.add_argument("--prompt", choices=sorted(PROMPTS), default=DEFAULT_PROMPT)
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--conditions", default="prompt,schema")
     ap.add_argument("--modes", default="single,multi")
@@ -188,7 +204,9 @@ def main():
     cfg = load_config()
     provider = OllamaProvider(cfg.base_url, args.model or cfg.model)
     exclude = set(filter(None, args.exclude.split(",")))
-    prompts = [json.loads(line) for line in PROMPTS.open(encoding="utf-8")]
+    prompts = [
+        json.loads(line) for line in EVALSETS[args.prompt].open(encoding="utf-8")
+    ]
     prompts = [p for p in prompts if p["category"] not in exclude]
     # サンプリング設定はモデル既定（Qwen3 は temperature 0.6 / top_p 0.95 / top_k 20）に任せる。
     # 暴走した長文で止まらないよう上限だけ設ける
@@ -197,7 +215,7 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = (
         OUT_DIR / f"{time.strftime('%Y%m%d_%H%M%S')}_{provider.model.replace(':', '-')}"
-        f"{'_no-' + '-'.join(sorted(exclude)) if exclude else ''}.jsonl"
+        f"_{args.prompt}{'_no-' + '-'.join(sorted(exclude)) if exclude else ''}.jsonl"
     )
     recs = []
     t0 = time.time()
@@ -205,16 +223,18 @@ def main():
         for mode in args.modes.split(","):
             for condition in args.conditions.split(","):
                 for seed in range(args.seeds):
-                    for rec in run(provider, prompts, condition, mode, seed, options):
+                    for rec in run(
+                        provider, prompts, args.prompt, condition, mode, seed, options
+                    ):
                         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                         f.flush()
                         recs.append(rec)
                     print(
-                        f"[{time.time() - t0:6.0f}s] {provider.model} {mode} {condition} seed={seed} 完了",
+                        f"[{time.time() - t0:6.0f}s] {provider.model} {args.prompt} {mode} {condition} seed={seed} 完了",
                         file=sys.stderr,
                     )
     print(
-        f"# プレフィックス遵守率: {provider.model}  (保存先: {out.relative_to(ROOT)})"
+        f"# プレフィックス遵守率: {provider.model} / {args.prompt}  (保存先: {out.relative_to(ROOT)})"
     )
     summarize(recs)
 

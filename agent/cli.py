@@ -2,6 +2,7 @@
 
     pixi run agent                 プロンプトのみ（ストリーミング表示）
     pixi run agent --constrained   JSON schema で形式を制約（生成後にまとめて表示）
+    pixi run agent --prompt v1     基準値計測時のプロンプト（`問` なし）で動かす
 
 コマンド: /reset 履歴を消す / /mode 制約の切替 / /exit 終了
 """
@@ -15,9 +16,10 @@ from rich.console import Console
 
 from agent.config import load_config
 from agent.persona import (
-    RESPONSE_SCHEMA,
-    SYSTEM_PROMPT_V1,
+    DEFAULT_PROMPT,
+    PROMPTS,
     extract_prefix,
+    make_schema,
     render_structured,
 )
 from agent.providers import Message, get_provider
@@ -29,6 +31,12 @@ def main() -> None:
         "--constrained", action="store_true", help="JSON schema で応答形式を制約する"
     )
     ap.add_argument("--model", help="AGENT_MODEL を上書きする")
+    ap.add_argument(
+        "--prompt",
+        choices=sorted(PROMPTS),
+        default=DEFAULT_PROMPT,
+        help="システムプロンプトの版",
+    )
     args = ap.parse_args()
 
     cfg = load_config()
@@ -39,11 +47,14 @@ def main() -> None:
 
     console = Console()
     session: PromptSession = PromptSession(history=InMemoryHistory())
-    system: Message = {"role": "system", "content": SYSTEM_PROMPT_V1}
+    system_prompt, prefixes = PROMPTS[args.prompt]
+    schema = make_schema(prefixes)
+    system: Message = {"role": "system", "content": system_prompt}
     history: list[Message] = []
 
     console.print(
-        f"[dim]model={provider.model}  constrained={constrained}  /exit で終了[/dim]"
+        f"[dim]model={provider.model}  prompt={args.prompt}  "
+        f"constrained={constrained}  /exit で終了[/dim]"
     )
 
     while True:
@@ -69,9 +80,7 @@ def main() -> None:
         try:
             if constrained:
                 with console.status("生成中…"):
-                    reply = render_structured(
-                        provider.chat(messages, schema=RESPONSE_SCHEMA)
-                    )
+                    reply = render_structured(provider.chat(messages, schema=schema))
                 console.print(reply, markup=False)
             else:
                 pieces = []
